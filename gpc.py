@@ -6,7 +6,7 @@ import io
 import os
 import math
 
-st.set_page_config(page_title="GPC Multi-File Overlay Dashboard", layout="wide")
+st.set_page_config(page_title="GPC Multi-file Overlay Web-app", layout="wide")
 
 # Modern and Professional UI Customization
 st.markdown("""

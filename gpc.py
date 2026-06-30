@@ -433,7 +433,7 @@ if st.session_state.results_list:
             vertical-align: middle;
         }}
         table.gpc-table th.gpc-th-sample {{
-            text-align: center;
+            text-align: right;
         }}
         table.gpc-table td.gpc-td {{
             padding: 7px 10px;

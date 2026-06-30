@@ -64,7 +64,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Main Dashboard Header Block
-st.title("GPC Multi-File Overlay Dashboard")
+st.title("GPC Multi-File Overlay Web-app")
 st.write("Upload Multiple GPC files to automatically compile molecular weight profiles and export publication-ready Excel reports.")
 st.markdown("---")
 

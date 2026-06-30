@@ -78,7 +78,7 @@ if "global_min_logm" not in st.session_state:
 if "global_max_logm" not in st.session_state:
     st.session_state.global_max_logm = 0
 
-# --- Sidebar Controls for Uploading (Better UX Layout) ---
+# --- Sidebar Controls for Uploading ---
 with st.sidebar:
     st.header("⚙️ Control Panel")
     st.write("Configure and upload raw analytical documents.")
@@ -178,9 +178,9 @@ if st.session_state.results_list:
     df_summary_transposed.insert(0, "unit", df_summary_transposed.index.map(units))
     df_summary_transposed.index.name = "GPC-IR"
 
-    # --- Analytics Highlight Summary Cards (New UX Feature) ---
+    # --- Analytics Highlight Summary Cards (ตัด Max Bulk SCB ออกเรียบร้อย) ---
     st.subheader("💡 Key Sample Highlights")
-    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    m_col1, m_col2, m_col3 = st.columns(3)
     with m_col1:
         avg_mw = df_summary["Mw"].mean() if "Mw" in df_summary.columns else 0
         st.markdown(f'<div class="metric-container"><div class="metric-value">{int(round(avg_mw)):,}</div><div class="metric-label">Average Mw (g/mol)</div></div>', unsafe_allow_html=True)
@@ -190,9 +190,6 @@ if st.session_state.results_list:
     with m_col3:
         total_samples = len(df_summary)
         st.markdown(f'<div class="metric-container"><div class="metric-value">{total_samples}</div><div class="metric-label">Total Samples Analysed</div></div>', unsafe_allow_html=True)
-    with m_col4:
-        max_scb = df_summary["Bulk SCB / 1000TC"].max() if "Bulk SCB / 1000TC" in df_summary.columns else 0
-        st.markdown(f'<div class="metric-container"><div class="metric-value">{max_scb:.1f}</div><div class="metric-label">Max Bulk SCB / 1000TC</div></div>', unsafe_allow_html=True)
     
     st.write("")
 
@@ -209,9 +206,7 @@ if st.session_state.results_list:
             worksheet_summary = writer.sheets['Summary_Report']
             worksheet_raw = workbook.add_worksheet('Raw_Data_MMD')
             
-            # ---------------------------------------------------------
-            # 🎨 COLOR FORMATTING DEFINITIONS
-            # ---------------------------------------------------------
+            # Formats definitions for Excel
             summary_header_format = workbook.add_format({
                 'bg_color': '#1E3A8A', 'font_color': '#FFFFFF', 'bold': True,
                 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#94A3B8'
@@ -239,9 +234,7 @@ if st.session_state.results_list:
                 workbook.add_format({'bg_color': '#FFFBEB', 'border': 1, 'border_color': '#E2E8F0'})
             ]
 
-            # ---------------------------------------------------------
-            # ✨ BEAUTIFY SUMMARY REPORT (OVERWRITING CELLS)
-            # ---------------------------------------------------------
+            # Populate Summary sheet
             worksheet_summary.write(0, 0, "GPC-IR", summary_header_format)
             for col_num, col_name in enumerate(df_summary_transposed.columns):
                 worksheet_summary.write(0, col_num + 1, col_name, summary_header_format)
@@ -259,22 +252,15 @@ if st.session_state.results_list:
                         val_to_write = "" if pd.isna(cell_val) else str(cell_val)
                         worksheet_summary.write(row_num + 1, col_num + 1, val_to_write, fmt)
 
-            # ---------------------------------------------------------
-            # 🛠️ [FIXED] DYNAMIC COLUMN WIDTH FOR SUMMARY REPORT
-            # ---------------------------------------------------------
-            # ส่วนที่แก้ปัญหา: ขยายขนาดคอลัมน์ในชีตแรกตามความยาวสูงสุดของชื่อตัวอย่างอัตโนมัติ
-            worksheet_summary.set_column(0, 0, 24) # คอลัมน์ดัชนีชี้วัด (GPC-IR)
-            worksheet_summary.set_column(1, 1, 12) # คอลัมน์หน่วย (unit)
-            
+            # Excel Column Width Setting
+            worksheet_summary.set_column(0, 0, 24)
+            worksheet_summary.set_column(1, 1, 12)
             for col_num, col_name in enumerate(df_summary_transposed.columns):
                 if col_name != "unit":
-                    # ตรวจสอบหาความยาวสูงสุดของชื่อคอลัมน์ เพื่อปรับหน้ากว้างให้กว้างขึ้นอย่างเหมาะสม (+ 6 ตัวอักษรเผื่อความกว้างปลอดภัย)
                     max_header_len = len(str(col_name)) + 6
                     worksheet_summary.set_column(col_num + 1, col_num + 1, max(max_header_len, 22))
 
-            # ---------------------------------------------------------
-            # 📋 POPULATE RAW MMD DATA SHEET
-            # ---------------------------------------------------------
+            # Populate Raw MMD sheet
             current_col_idx = 0
             for file_idx, item in enumerate(st.session_state.data_mmd_list):
                 df_item = item["df"]
@@ -300,7 +286,6 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # Adjust Column Widths for Raw Data Sheet
             current_col_idx = 0
             for item in st.session_state.data_mmd_list:
                 df_item = item["df"]
@@ -309,24 +294,17 @@ if st.session_state.results_list:
                     worksheet_raw.set_column(current_col_idx + sub_col_idx, current_col_idx + sub_col_idx, max(max_len, 14))
                 current_col_idx += len(df_item.columns)
 
-            # ---------------------------------------------------------
-            # 📈 CHART NATIVE OVERLAY INTEGRATION
-            # ---------------------------------------------------------
+            # Native Excel Chart integration
             chart_master = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
-            
             col_offset = 0
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
-                
-                # Primary MWD Data Series
                 chart_master.add_series({
                     'name':       f"{item['file_name']} (MWD)",
                     'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 1, df_len + 1, col_offset + 1],
                     'line':       {'width': 2.2},
                 })
-                
-                # Secondary SCB Data Series
                 chart_master.add_series({
                     'name':       f"{item['file_name']} (SCB / 1000TC)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
@@ -337,23 +315,9 @@ if st.session_state.results_list:
                 col_offset += len(item["df"].columns)
             
             chart_master.set_title({'name': 'GPC MWD & SCB/1000TC Overlay Profile'})
-            chart_master.set_x_axis({
-                'name': 'Log M',
-                'min': st.session_state.global_min_logm,
-                'max': st.session_state.global_max_logm,
-                'major_unit': 1
-            })
-            chart_master.set_y_axis({
-                'name': 'MMD (Molecular Weight Distribution)',
-                'min': 0
-            })
-            chart_master.set_y2_axis({
-                'name': 'SCB / 1000TC',
-                'min': 0,
-                'max': 40,
-                'visible': True
-            })
-            
+            chart_master.set_x_axis({'name': 'Log M', 'min': st.session_state.global_min_logm, 'max': st.session_state.global_max_logm, 'major_unit': 1})
+            chart_master.set_y_axis({'name': 'MMD (Molecular Weight Distribution)', 'min': 0})
+            chart_master.set_y2_axis({'name': 'SCB / 1000TC', 'min': 0, 'max': 40, 'visible': True})
             chart_master.set_size({'width': 900, 'height': 520})
             worksheet_summary.insert_chart('B18', chart_master)
         
@@ -365,21 +329,22 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- Compressed Table Layout Frame ---
+    # --- 🛠️ [FIXED] หน้าตาราง Web App จัดความกว้างให้พอดีๆ และขยายเต็มหน้าจอ ---
     streamlit_col_config = {
-        "GPC-IR": st.column_config.Column("GPC-IR", width=180, required=True),
-        "unit": st.column_config.Column("unit", width=75)
+        "GPC-IR": st.column_config.Column("GPC-IR", width="medium", required=True),
+        "unit": st.column_config.Column("unit", width="small")
     }
     for sample_col in df_summary_transposed.columns:
         if sample_col != "unit":
-            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=140) 
+            # ปรับสัดส่วนให้คอลัมน์ชื่อยาวๆ กางออกมาสวยพอดี ไม่โดนบีบอัดตัวหนังสือ
+            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width="large") 
 
     st.dataframe(
         df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=True, 
+        use_container_width=True, # บังคับให้ตารางยืดขยายตามสัดส่วนหน้าจอเต็มๆ 100%
         column_config=streamlit_col_config
     )
     st.markdown("---")
@@ -389,7 +354,7 @@ if st.session_state.data_mmd_list:
     st.subheader("📈 Interactive Distribution Profile (MWD & SCB Overlay)")
     
     fig = go.Figure()
-    colors = px.colors.qualitative.Safe # มู้ดโทนสีสวยสบายตา สไตล์แล็บมาตรฐานสากล
+    colors = px.colors.qualitative.Safe
     
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
@@ -441,18 +406,11 @@ if st.session_state.data_mmd_list:
             rangemode="tozero"
         ),
         hovermode="x unified",
-        legend=dict(
-            orientation="h", 
-            yanchor="bottom",      
-            y=-0.25,                 
-            xanchor="center",        
-            x=0.5                 
-        ),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
         plot_bgcolor='white', paper_bgcolor='white', height=600, margin=dict(l=60, r=60, t=20, b=80)
     )
     
     st.plotly_chart(fig, use_container_width=True)
             
 elif not uploaded_files:
-    # Beautiful Empty State Guide
-    st.info("💡 Control Panel ในฝั่งซ้ายมือเปิดใช้งานอยู่! กรุณาเลือกไฟล์ข้อสรุป GPC (.xlsx) และกดคำสั่ง 'Process & Overlay Data' เพื่อดูแดชบอร์ด")
+    st.info("💡Please upload GPC files in the sidebar and click 'Process & Overlay Data' to view the dashboard.")

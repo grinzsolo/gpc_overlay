@@ -45,6 +45,7 @@ if submit_button and uploaded_files:
     else:
         data_mmd_list = []
         results_list = []
+        max_scb_value = 0.0 # Variable to track global maximum SCB for dynamic axis scaling
         
         # Loop through each uploaded file to extract information
         for file in uploaded_files:
@@ -72,6 +73,14 @@ if submit_button and uploaded_files:
                     "file_name": file_name,
                     "df": df_mmd
                 })
+                
+                # Dynamic tracking of the highest SCB value across all uploaded datasets
+                cols_lower_temp = [c.lower() for c in df_mmd.columns]
+                col_scb_idx_temp = next((idx for idx, c in enumerate(cols_lower_temp) if 'scb' in c or '1000tc' in c), None)
+                if col_scb_idx_temp is not None:
+                    current_max = pd.to_numeric(df_mmd.iloc[:, col_scb_idx_temp], errors='coerce').max()
+                    if pd.notna(current_max) and current_max > max_scb_value:
+                        max_scb_value = current_max
                 
                 # Target metrics list to extract from the "Results" sheet
                 res_dict = {"Sample Name": file_name}
@@ -108,7 +117,7 @@ if submit_button and uploaded_files:
             except Exception as e:
                 st.error(f"Error reading file {file_name}: {e}")
 
-        # --- Data Compilation for Tables ---
+        # --- Data Compilation for Tables & Excel Export ---
         if results_list:
             df_summary = pd.DataFrame(results_list)
             df_summary.set_index("Sample Name", inplace=True)
@@ -124,12 +133,16 @@ if submit_button and uploaded_files:
             df_summary_transposed.insert(0, "unit", df_summary_transposed.index.map(units))
             df_summary_transposed.index.name = "GPC-IR"
 
-            # Create Master Raw Data DataFrame for multi-sheet export
-            master_raw_df = pd.DataFrame()
+            # --- 2. Horizontal Concatenation for Raw Data Excel Sheet ---
+            horizontal_raw_list = []
             for item in data_mmd_list:
                 temp_df = item["df"].copy()
-                temp_df.insert(0, "Source File", item["file_name"])
-                master_raw_df = pd.concat([master_raw_df, temp_df], ignore_index=True)
+                # Create a MultiIndex header structure to elegantly show [Filename -> Columns] side-by-side
+                temp_df.columns = pd.MultiIndex.from_product([[item["file_name"]], temp_df.columns])
+                horizontal_raw_list.append(temp_df)
+            
+            # Join all DataFrames side-by-side along the column axis (axis=1)
+            master_raw_horizontal = pd.concat(horizontal_raw_list, axis=1)
 
             # --- Layout Grid: Action Headers ---
             col_title, col_download = st.columns([3, 1])
@@ -140,7 +153,8 @@ if submit_button and uploaded_files:
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     df_summary_transposed.to_excel(writer, sheet_name='Summary_Report', index=True)
-                    master_raw_df.to_excel(writer, sheet_name='Raw_Data_MMD', index=False)
+                    # export horizontal dataframe to the second sheet
+                    master_raw_horizontal.to_excel(writer, sheet_name='Raw_Data_MMD', index=False)
                 
                 st.download_button(
                     label="📥 Download Excel Output",
@@ -151,17 +165,15 @@ if submit_button and uploaded_files:
                 )
 
             # --- Layout Optimization for Table Width ---
-            # Adjusted ratio to 4:1 to give the table more horizontal freedom
             col_table, col_spacer = st.columns([4, 1])
             with col_table:
-                # Use st.column_config to strictly expand the first column (Index/GPC-IR Name)
                 st.dataframe(
                     df_summary_transposed.style.format(precision=2, na_rep="-"),
                     use_container_width=False,
                     column_config={
                         "GPC-IR": st.column_config.Column(
                             "GPC-IR",
-                            width=220,  # Expand first column to 220px to perfectly fit long strings
+                            width=220,
                             required=True
                         ),
                         "unit": st.column_config.Column(
@@ -218,6 +230,10 @@ if submit_button and uploaded_files:
                         yaxis='y2'
                     ))
             
+            # --- Dynamic Y2 Axis Range Setting ---
+            # Set default safe upper limit if data is zero/missing, otherwise multiply max by 5
+            scb_upper_limit = 5.0 if max_scb_value == 0.0 else max_scb_value * 5.0
+            
             # Figure layout configuration for standard clean scientific layout
             fig.update_layout(
                 xaxis=dict(
@@ -238,7 +254,8 @@ if submit_button and uploaded_files:
                     showgrid=False,
                     anchor="x",
                     overlaying="y",
-                    side="right"
+                    side="right",
+                    range=[0, scb_upper_limit] # Force axis to start at 0 and top at 5x maximum data
                 ),
                 hovermode="x unified",
                 legend=dict(

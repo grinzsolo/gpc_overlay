@@ -145,16 +145,30 @@ if st.session_state.results_list:
             worksheet_summary = writer.sheets['Summary_Report']
             worksheet_raw = workbook.add_worksheet('Raw_Data_MMD')
             
-            dark_header_format = workbook.add_format({
-                'bg_color': '#1E3A8A', 
-                'font_color': '#FFFFFF',
-                'bold': True,
-                'align': 'center',
-                'valign': 'vcenter',
-                'border': 1,
-                'border_color': '#94A3B8'
+            # ---------------------------------------------------------
+            # 🎨 COLOR FORMATTING DEFINITIONS
+            # ---------------------------------------------------------
+            # 1. Summary Report Formats
+            summary_header_format = workbook.add_format({
+                'bg_color': '#1E3A8A', 'font_color': '#FFFFFF', 'bold': True,
+                'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#94A3B8'
+            })
+            summary_index_format = workbook.add_format({
+                'bg_color': '#F1F5F9', 'font_color': '#0F172A', 'bold': True,
+                'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': '#CBD5E1'
+            })
+            summary_data_odd = workbook.add_format({
+                'bg_color': '#FFFFFF', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E2E8F0'
+            })
+            summary_data_even = workbook.add_format({
+                'bg_color': '#F8FAFC', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E2E8F0'
             })
             
+            # 2. Raw Data Formats
+            dark_header_format = workbook.add_format({
+                'bg_color': '#1E3A8A', 'font_color': '#FFFFFF', 'bold': True,
+                'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#94A3B8'
+            })
             soft_stripe_formats = [
                 workbook.add_format({'bg_color': '#F8FAFC', 'border': 1, 'border_color': '#E2E8F0'}),
                 workbook.add_format({'bg_color': '#EFF6FF', 'border': 1, 'border_color': '#E2E8F0'}),
@@ -162,7 +176,41 @@ if st.session_state.results_list:
                 workbook.add_format({'bg_color': '#FEF2F2', 'border': 1, 'border_color': '#E2E8F0'}),
                 workbook.add_format({'bg_color': '#FFFBEB', 'border': 1, 'border_color': '#E2E8F0'})
             ]
-            
+
+            # ---------------------------------------------------------
+            # ✨ BEAUTIFY SUMMARY REPORT (OVERWRITING CELLS)
+            # ---------------------------------------------------------
+            # Headers
+            worksheet_summary.write(0, 0, "GPC-IR", summary_header_format)
+            for col_num, col_name in enumerate(df_summary_transposed.columns):
+                worksheet_summary.write(0, col_num + 1, col_name, summary_header_format)
+
+            # Data Rows (Zebra Stripes & Bold Index)
+            for row_num, (index_val, row_data) in enumerate(df_summary_transposed.iterrows()):
+                fmt = summary_data_even if row_num % 2 == 0 else summary_data_odd
+                
+                # Write Index Label
+                worksheet_summary.write(row_num + 1, 0, index_val, summary_index_format)
+                
+                # Write Data Cells
+                for col_num, cell_val in enumerate(row_data):
+                    if index_val in ["Mw", "Mn", "Mz", "Mz1", "Mv", "Mp"] and pd.notna(cell_val) and col_num > 0:
+                        worksheet_summary.write_number(row_num + 1, col_num + 1, int(cell_val), fmt)
+                    elif pd.notna(cell_val) and isinstance(cell_val, (int, float)):
+                        worksheet_summary.write_number(row_num + 1, col_num + 1, float(cell_val), fmt)
+                    else:
+                        val_to_write = "" if pd.isna(cell_val) else str(cell_val)
+                        worksheet_summary.write(row_num + 1, col_num + 1, val_to_write, fmt)
+
+            # Adjust Column Widths for Summary Report
+            worksheet_summary.set_column(0, 0, 24)
+            worksheet_summary.set_column(1, 1, 10)
+            for col_idx in range(2, len(df_summary_transposed.columns) + 1):
+                worksheet_summary.set_column(col_idx, col_idx, 18)
+
+            # ---------------------------------------------------------
+            # 📋 POPULATE RAW MMD DATA SHEET
+            # ---------------------------------------------------------
             current_col_idx = 0
             for file_idx, item in enumerate(st.session_state.data_mmd_list):
                 df_item = item["df"]
@@ -188,13 +236,7 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- รูปที่ 2 Fix: ขยายความกว้างหัวคอลัมน์ใน Excel ให้กว้างเต็มตัวอักษรพอดี ---
-            worksheet_summary.set_column(0, 0, 24) # คอลัมน์พารามิเตอร์เคมีหลัก
-            worksheet_summary.set_column(1, 1, 10) # คอลัมน์หน่วยวัด (unit)
-            for col_idx in range(2, len(df_summary_transposed.columns) + 1):
-                worksheet_summary.set_column(col_idx, col_idx, 18) # คอลัมน์ชื่อ Sample ต่างๆ
-                
-            # ขยายความกว้างของหน้าข้อมูลดิบตามความยาวจริงของสตริงตัวอักษรหัวคอลัมน์
+            # Adjust Column Widths for Raw Data
             current_col_idx = 0
             for item in st.session_state.data_mmd_list:
                 df_item = item["df"]
@@ -203,15 +245,16 @@ if st.session_state.results_list:
                     worksheet_raw.set_column(current_col_idx + sub_col_idx, current_col_idx + sub_col_idx, max(max_len, 14))
                 current_col_idx += len(df_item.columns)
 
-            # --- รูปที่ 3 Fix: ปลดล็อกปัญหาแกน Y รองฝั่งขวาหายใน Excel Chart ---
-            # ใช้แผนภูมิวัตถุตัวเดี่ยว (Single Chart container) ยัดทุกข้อมูลเข้าแทนการใช้ .combine() บั๊กแกนขวาจะหายไปทันที
+            # ---------------------------------------------------------
+            # 📈 CHART NATIVE OVERLAY INTEGRATION
+            # ---------------------------------------------------------
             chart_master = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
             col_offset = 0
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
                 
-                # ฝั่ง MWD อ้างอิงแกนหลัก (Primary Y-axis)
+                # Primary MWD Data Series
                 chart_master.add_series({
                     'name':       f"{item['file_name']} (MWD)",
                     'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
@@ -219,17 +262,16 @@ if st.session_state.results_list:
                     'line':       {'width': 2.2},
                 })
                 
-                # ฝั่ง SCB / 1000TC อ้างอิงแกนรอง (Secondary Y-axis ผ่านคุณสมบัติ y2_axis: 1)
+                # Secondary SCB Data Series
                 chart_master.add_series({
                     'name':       f"{item['file_name']} (SCB / 1000TC)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
-                    'y2_axis':    1,  # บังคับเปิดแกนรองฝั่งขวาบนวัตถุแผนภูมิหลักโดยตรง
+                    'y2_axis':    1,  
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
             
-            # กำหนดองค์ประกอบแกนทั้งหมดให้กับแผนภูมิเดียว
             chart_master.set_title({'name': 'GPC MWD & SCB/1000TC Overlay Profile'})
             chart_master.set_x_axis({
                 'name': 'Log M',
@@ -245,7 +287,7 @@ if st.session_state.results_list:
                 'name': 'SCB / 1000TC',
                 'min': 0,
                 'max': 40,
-                'visible': True # เปิดขีดแสดงตัวเลขและเครื่องหมายบอกสเกลด้านขวาชัดเจน
+                'visible': True
             })
             
             chart_master.set_size({'width': 850, 'height': 500})
@@ -259,22 +301,21 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- รูปที่ 1 Fix: บีบความกว้างตารางหน้าเว็บแอปให้รัดพอดีตัวเลข ไม่ขยายกว้างเกินไป ---
-    # สร้างโครงสร้าง column_config เพื่อบีบล็อกขนาดพิกเซลแบบไดนามิกตามจำนวนตัวอย่างจริง
+    # --- Compressed Table Layout Frame ---
     streamlit_col_config = {
         "GPC-IR": st.column_config.Column("GPC-IR", width=180, required=True),
         "unit": st.column_config.Column("unit", width=75)
     }
     for sample_col in df_summary_transposed.columns:
         if sample_col != "unit":
-            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=115) # บีบคอลัมน์ตัวเลขให้กระชับพอดี
+            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=115) 
 
     st.dataframe(
         df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x)}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=False, # ล็อกห้ามไม่ให้ตารางยืดขยายตัวเกินความจำเป็น
+        use_container_width=False, 
         column_config=streamlit_col_config
     )
     st.markdown("---")
@@ -286,7 +327,6 @@ if st.session_state.data_mmd_list:
     fig = go.Figure()
     colors = px.colors.qualitative.Plotly
     
-    # วนลูปกลุ่ม MWD ขึ้นแสดงในป้ายรายการโซนบนก่อน
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]
@@ -301,7 +341,6 @@ if st.session_state.data_mmd_list:
                 line=dict(color=color, width=2.5), yaxis='y1'
             ))
             
-    # วนลูปกลุ่ม SCB / 1000TC ตามมาแสดงผลในรายการโซนล่าง ต่อท้าย MWD อย่างมีระเบียบ
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]

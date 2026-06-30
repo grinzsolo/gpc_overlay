@@ -133,15 +133,15 @@ if submit_button and uploaded_files:
             df_summary_transposed.insert(0, "unit", df_summary_transposed.index.map(units))
             df_summary_transposed.index.name = "GPC-IR"
 
-            # --- 2. Horizontal Concatenation for Raw Data Excel Sheet ---
+            # --- Fix NotImplementedError: Flatten MultiIndex for Horizontal Export ---
             horizontal_raw_list = []
             for item in data_mmd_list:
                 temp_df = item["df"].copy()
-                # Create a MultiIndex header structure to elegantly show [Filename -> Columns] side-by-side
-                temp_df.columns = pd.MultiIndex.from_product([[item["file_name"]], temp_df.columns])
+                # Create flat names like "gpc1.xls_LogM" instead of a MultiIndex layout
+                temp_df.columns = [f"{item['file_name']}_{col}" for col in temp_df.columns]
                 horizontal_raw_list.append(temp_df)
             
-            # Join all DataFrames side-by-side along the column axis (axis=1)
+            # Join all DataFrames side-by-side cleanly along columns
             master_raw_horizontal = pd.concat(horizontal_raw_list, axis=1)
 
             # --- Layout Grid: Action Headers ---
@@ -153,7 +153,7 @@ if submit_button and uploaded_files:
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     df_summary_transposed.to_excel(writer, sheet_name='Summary_Report', index=True)
-                    # export horizontal dataframe to the second sheet
+                    # Writing flat columns with index=False works perfectly now
                     master_raw_horizontal.to_excel(writer, sheet_name='Raw_Data_MMD', index=False)
                 
                 st.download_button(
@@ -231,7 +231,6 @@ if submit_button and uploaded_files:
                     ))
             
             # --- Dynamic Y2 Axis Range Setting ---
-            # Set default safe upper limit if data is zero/missing, otherwise multiply max by 5
             scb_upper_limit = 5.0 if max_scb_value == 0.0 else max_scb_value * 5.0
             
             # Figure layout configuration for standard clean scientific layout
@@ -255,7 +254,7 @@ if submit_button and uploaded_files:
                     anchor="x",
                     overlaying="y",
                     side="right",
-                    range=[0, scb_upper_limit] # Force axis to start at 0 and top at 5x maximum data
+                    range=[0, scb_upper_limit]
                 ),
                 hovermode="x unified",
                 legend=dict(

@@ -303,7 +303,7 @@ if st.session_state.data_mmd_list:
         if col_scb_idx is not None and col_scb_idx > 0:
             fig.add_trace(go.Scatter(
                 x=df.iloc[:, col_scb_idx - 1], y=df.iloc[:, col_scb_idx],
-                mode='lines', name=f"{f_name} (SCB / 1000TC)",  # Renamed strictly according to requirement
+                mode='lines', name=f"{f_name} (SCB / 1000TC)",  
                 line=dict(color=color, width=2, dash='dashdot'), yaxis='y2'
             ))
     
@@ -314,13 +314,13 @@ if st.session_state.data_mmd_list:
             range=[st.session_state.global_min_logm, st.session_state.global_max_logm],
             dtick=1
         ),
-        # Fix alignment by setting rangemode to non-negative zero boundaries
+        # Fix baseline zero alignment perfectly
         yaxis=dict(
             title="MMD (Molecular Weight Distribution)", 
             showgrid=True, 
             gridcolor='#e2e8f0', 
             side="left",
-            range=[0, None]  # Force explicit start at 0
+            rangemode="tozero"  # Forces primary axis to strictly anchor 0 line
         ),
         yaxis2=dict(
             title="SCB / 1000TC", 
@@ -328,7 +328,8 @@ if st.session_state.data_mmd_list:
             anchor="x", 
             overlaying="y", 
             side="right", 
-            range=[0, 40]  # Force explicit start at 0 and end at 40
+            range=[0, 40],
+            rangemode="tozero"  # Forces secondary axis to strictly anchor 0 line at the exact horizontal plane
         ),
         hovermode="x unified",
         legend=dict(

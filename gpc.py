@@ -413,4 +413,4 @@ if st.session_state.data_mmd_list:
     st.plotly_chart(fig, use_container_width=True)
             
 elif not uploaded_files:
-    st.info("💡 Control Panel ในฝั่งซ้ายมือเปิดใช้งานอยู่! กรุณาเลือกไฟล์ข้อสรุป GPC (.xlsx) และกดคำสั่ง 'Process & Overlay Data' เพื่อดูแดชบอร์ด")
+    st.info("💡Please upload GPC files in the sidebar and click 'Process & Overlay Data' to view the dashboard.")

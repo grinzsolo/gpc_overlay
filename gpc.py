@@ -151,12 +151,24 @@ if submit_button and uploaded_files:
                 )
 
             # --- Layout Optimization for Table Width ---
-            # Columns restriction to prevent excessive horizontal stretching
-            col_table, col_spacer = st.columns([3, 2])
+            # Adjusted ratio to 4:1 to give the table more horizontal freedom
+            col_table, col_spacer = st.columns([4, 1])
             with col_table:
+                # Use st.column_config to strictly expand the first column (Index/GPC-IR Name)
                 st.dataframe(
                     df_summary_transposed.style.format(precision=2, na_rep="-"),
-                    use_container_width=False
+                    use_container_width=False,
+                    column_config={
+                        "GPC-IR": st.column_config.Column(
+                            "GPC-IR",
+                            width=220,  # Expand first column to 220px to perfectly fit long strings
+                            required=True
+                        ),
+                        "unit": st.column_config.Column(
+                            "unit",
+                            width=90
+                        )
+                    }
                 )
             
             st.markdown("---")
@@ -166,7 +178,6 @@ if submit_button and uploaded_files:
             st.subheader("📈 MWD & SCB Overlay Profile")
             
             fig = go.Figure()
-            # Fixed Color Attribute: Using a standard stable qualitative color palette
             colors = px.colors.qualitative.Plotly
             
             for i, data_item in enumerate(data_mmd_list):
@@ -220,16 +231,14 @@ if submit_button and uploaded_files:
                     title="MMD (Molecular Weight Distribution)",
                     showgrid=True,
                     gridcolor='#e2e8f0',
-                    side="left",
-                    titlefont=dict(color="#1e293b")
+                    side="left"
                 ),
                 yaxis2=dict(
                     title="SCB / 1000TC",
                     showgrid=False,
                     anchor="x",
                     overlaying="y",
-                    side="right",
-                    titlefont=dict(color="#1e293b")
+                    side="right"
                 ),
                 hovermode="x unified",
                 legend=dict(

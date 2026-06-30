@@ -27,12 +27,11 @@ st.title("📊 GPC Multi-File Overlay Dashboard")
 st.write("Upload GPC files to overlay molecular profiles with advanced chart-embedded Excel exporting tools.")
 st.markdown("---")
 
+# Initialize Session States to prevent data from disappearing on download action
 if "data_mmd_list" not in st.session_state:
     st.session_state.data_mmd_list = []
 if "results_list" not in st.session_state:
     st.session_state.results_list = []
-if "max_scb_value" not in st.session_state:
-    st.session_state.max_scb_value = 0.0
 if "global_min_logm" not in st.session_state:
     st.session_state.global_min_logm = 0
 if "global_max_logm" not in st.session_state:
@@ -46,13 +45,13 @@ with st.form(key="gpc_upload_form"):
     )
     submit_button = st.form_submit_button(label="🚀 Process and Overlay Data")
 
+# Process file calculations upon submit trigger
 if submit_button and uploaded_files:
     if len(uploaded_files) > 5:
         st.error("⚠️ Maximum 5 files allowed. Please remove excess files and submit again.")
     else:
         st.session_state.data_mmd_list = []
         st.session_state.results_list = []
-        st.session_state.max_scb_value = 0.0
         
         all_min_logm = []
         all_max_logm = []
@@ -72,20 +71,12 @@ if submit_button and uploaded_files:
                     "df": df_mmd
                 })
                 
-                # Dynamic range tracking for LogM using main Column 0
+                # Global X axis range tracking based on the primary LogM column (Column 0)
                 if len(df_mmd.columns) > 0:
                     numeric_logm = pd.to_numeric(df_mmd.iloc[:, 0], errors='coerce').dropna()
                     if not numeric_logm.empty:
                         all_min_logm.append(numeric_logm.min())
                         all_max_logm.append(numeric_logm.max())
-                
-                # Trace highest SCB values across datasets
-                cols_lower_temp = [c.lower() for c in df_mmd.columns]
-                col_scb_idx_temp = next((idx for idx, c in enumerate(cols_lower_temp) if 'scb' in c or '1000tc' in c), None)
-                if col_scb_idx_temp is not None:
-                    current_max = pd.to_numeric(df_mmd.iloc[:, col_scb_idx_temp], errors='coerce').max()
-                    if pd.notna(current_max) and current_max > st.session_state.max_scb_value:
-                        st.session_state.max_scb_value = current_max
                 
                 res_dict = {"Sample Name": file_name_clean}
                 target_metrics = [
@@ -181,17 +172,14 @@ if st.session_state.results_list:
                 num_cols = len(df_item.columns)
                 sample_name = item["file_name"]
                 
-                # Row 1: Merge range across Sample Name
                 worksheet_raw.merge_range(
                     0, current_col_idx, 0, current_col_idx + num_cols - 1, 
                     sample_name, dark_header_format
                 )
                 
-                # Row 2: Sub-columns
                 for sub_col_idx, col_name in enumerate(df_item.columns):
                     worksheet_raw.write(1, current_col_idx + sub_col_idx, col_name, dark_header_format)
                 
-                # Rows 3+: Data Matrix Writing
                 active_cell_format = soft_stripe_formats[file_idx % len(soft_stripe_formats)]
                 for r_idx in range(len(df_item)):
                     for c_idx in range(num_cols):
@@ -203,7 +191,8 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- Chart Native Overlay Integration (Fixed Dual-Axis Structure) ---
+            # --- Chart Native Overlay Integration (Strict Setup for Scatter Dual-Axis) ---
+            # Both charts MUST be identical in type and subtype to unblock secondary axis mapping in Excel
             chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
@@ -224,12 +213,12 @@ if st.session_state.results_list:
                     'name':       f"{item['file_name']} (SCB)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
-                    'y2_axis':    True, 
+                    'y2_axis':    True, # Enforce binding property to the secondary Y container
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
             
-            # Master configuration for Native Excel Dual Y-Axis Chart Rendering
+            # Master Layout formatting for the chart objects
             chart_mwd.set_title({'name': 'GPC MWD & SCB Overlay Profile'})
             chart_mwd.set_x_axis({
                 'name': 'Log M',
@@ -239,17 +228,15 @@ if st.session_state.results_list:
             })
             chart_mwd.set_y_axis({'name': 'MMD (Molecular Weight Distribution)'})
             
-            scb_upper_limit = 5.0 if st.session_state.max_scb_value == 0.0 else st.session_state.max_scb_value * 5.0
-            
-            # Critical step: Bind the secondary axis to chart_scb before combining
+            # Crucial Fix: Define the axis visibility and scale on the secondary container object FIRST
             chart_scb.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
-                'max': scb_upper_limit,
+                'max': 40, # Strictly locked to 40 max boundary
                 'visible': True
             })
             
-            # Combine chart sheets and inject to the report front page
+            # Combine chart sheets and pass the layout to front page summary report
             chart_mwd.combine(chart_scb)
             chart_mwd.set_size({'width': 850, 'height': 500})
             worksheet_summary.insert_chart('B18', chart_mwd)
@@ -262,7 +249,7 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- Compressed Table View Frame ---
+    # --- Compressed Table Layout Frame ---
     dynamic_ratio = min(max(len(st.session_state.results_list) * 1, 2), 4)
     col_table, col_spacer = st.columns([dynamic_ratio, 5 - dynamic_ratio])
     with col_table:
@@ -312,8 +299,6 @@ if st.session_state.data_mmd_list:
                 line=dict(color=color, width=2, dash='dashdot'), yaxis='y2'
             ))
     
-    scb_upper_limit = 5.0 if st.session_state.max_scb_value == 0.0 else st.session_state.max_scb_value * 5.0
-    
     fig.update_layout(
         xaxis=dict(
             title="Log M", showgrid=True, gridcolor='#e2e8f0',
@@ -322,7 +307,7 @@ if st.session_state.data_mmd_list:
             dtick=1
         ),
         yaxis=dict(title="MMD (Molecular Weight Distribution)", showgrid=True, gridcolor='#e2e8f0', side="left"),
-        yaxis2=dict(title="SCB / 1000TC", showgrid=False, anchor="x", overlaying="y", side="right", range=[0, scb_upper_limit]),
+        yaxis2=dict(title="SCB / 1000TC", showgrid=False, anchor="x", overlaying="y", side="right", range=[0, 40]), 
         hovermode="x unified",
         legend=dict(
             orientation="v",       

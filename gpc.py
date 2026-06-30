@@ -156,8 +156,6 @@ if st.session_state.results_list:
             
             workbook  = writer.book
             worksheet_summary = writer.sheets['Summary_Report']
-            
-            # Create the custom second sheet for Raw Data layout explicitly
             worksheet_raw = workbook.add_worksheet('Raw_Data_MMD')
             
             # --- Dark Color Theme Styles Configuration ---
@@ -179,24 +177,24 @@ if st.session_state.results_list:
                 workbook.add_format({'bg_color': '#FFFBEB', 'border': 1, 'border_color': '#E2E8F0'})
             ]
             
-            # --- 1. Populate Raw MMD Sheet with Multi-Level Dark Headers ---
+            # --- Populate Raw MMD Sheet with Multi-Level Dark Headers ---
             current_col_idx = 0
             for file_idx, item in enumerate(st.session_state.data_mmd_list):
                 df_item = item["df"]
                 num_cols = len(df_item.columns)
                 sample_name = item["file_name"]
                 
-                # Row 1: Merge range across the sample data set width for the Sample Name
+                # Row 1: Merge range across Sample
                 worksheet_raw.merge_range(
                     0, current_col_idx, 0, current_col_idx + num_cols - 1, 
                     sample_name, dark_header_format
                 )
                 
-                # Row 2: Write specific raw data column subtitles cleanly
+                # Row 2: Sub-columns
                 for sub_col_idx, col_name in enumerate(df_item.columns):
                     worksheet_raw.write(1, current_col_idx + sub_col_idx, col_name, dark_header_format)
                 
-                # Rows 3+: Write the cell matrix values and apply background tints
+                # Rows 3+: Data Writing
                 active_cell_format = soft_stripe_formats[file_idx % len(soft_stripe_formats)]
                 for r_idx in range(len(df_item)):
                     for c_idx in range(num_cols):
@@ -208,7 +206,7 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- 2. Chart Native Overlay Integration with Rigid Right-Axis Tracking ---
+            # --- Chart Native Overlay Integration with Rigid Right-Axis Tracking ---
             chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
@@ -216,6 +214,10 @@ if st.session_state.results_list:
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
                 
+                # Fixed Core Column Matching Logic for Excel Data Mapping
+                # Row index shifts to 2 (starts from data cell row 3), dynamic length maps up to df_len + 1
+                
+                # MWD Profile Sequence: Column 0 (LogM) vs Column 1 (MMD)
                 chart_mwd.add_series({
                     'name':       f"{item['file_name']} (MWD)",
                     'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
@@ -223,15 +225,17 @@ if st.session_state.results_list:
                     'line':       {'width': 2.2},
                 })
                 
+                # SCB Profile Sequence: Column 4 (LogM.2) vs Column 5 (SCB / 1000TC)
                 chart_scb.add_series({
                     'name':       f"{item['file_name']} (SCB)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
-                    'y2_axis':    True, # Locks the series tightly to the secondary Y-Axis parameters
+                    'y2_axis':    True, 
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
             
+            # Combine Series into the Master Container Chart Template
             chart_mwd.combine(chart_scb)
             chart_mwd.set_title({'name': 'GPC MWD & SCB Overlay Profile'})
             
@@ -244,12 +248,15 @@ if st.session_state.results_list:
             chart_mwd.set_y_axis({'name': 'MMD (Molecular Weight Distribution)'})
             
             scb_upper_limit = 5.0 if st.session_state.max_scb_value == 0.0 else st.session_state.max_scb_value * 5.0
-            chart_mwd.set_y2_axis({
+            
+            # Fix Excel Secondary Axis visibility bug
+            chart_scb.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
                 'max': scb_upper_limit,
-                'visible': True # Binds and renders the missing right side column tick markers
+                'visible': True
             })
+            chart_mwd.set_y2_axis({'visible': True})
             
             chart_mwd.set_size({'width': 850, 'height': 500})
             worksheet_summary.insert_chart('B18', chart_mwd)
@@ -262,8 +269,7 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- 3. Optimized Grid View: Table Adjusted to Fit Content Tightly ---
-    # Calculates columns width multiplier based on uploaded file count
+    # --- Table Layout ---
     dynamic_ratio = min(max(len(st.session_state.results_list) * 1, 2), 4)
     col_table, col_spacer = st.columns([dynamic_ratio, 5 - dynamic_ratio])
     with col_table:
@@ -273,7 +279,7 @@ if st.session_state.results_list:
         )
         st.dataframe(
             formatted_df,
-            use_container_width=False, # Lock structure to stop wide layout distortion
+            use_container_width=False, 
             column_config={
                 "GPC-IR": st.column_config.Column("GPC-IR", width=190, required=True),
                 "unit": st.column_config.Column("unit", width=75)
@@ -297,6 +303,7 @@ if st.session_state.data_mmd_list:
         col_mmd_idx = next((idx for idx, c in enumerate(cols_lower) if 'mmd' in c), None)
         col_scb_idx = next((idx for idx, c in enumerate(cols_lower) if 'scb' in c or '1000tc' in c), None)
         
+        # Web View Mapping Logic
         if col_mmd_idx is not None and col_mmd_idx > 0:
             col_mwd_logm_idx = col_mmd_idx - 1
             fig.add_trace(go.Scatter(
@@ -325,13 +332,12 @@ if st.session_state.data_mmd_list:
         yaxis=dict(title="MMD (Molecular Weight Distribution)", showgrid=True, gridcolor='#e2e8f0', side="left"),
         yaxis2=dict(title="SCB / 1000TC", showgrid=False, anchor="x", overlaying="y", side="right", range=[0, scb_upper_limit]),
         hovermode="x unified",
-        # --- 4. Legend Relocation Configuration Locked to Right-Hand Layout ---
         legend=dict(
-            orientation="v",       # Vertical stack mapping layout
-            yanchor="middle",      # Anchor centerline balance
-            y=0.5,                 # Centered layout perfectly along y grid frame
-            xanchor="left",        # Binds left bounding box marker
-            x=1.05                 # Places layout elements outside to the right boundary frame
+            orientation="v",       
+            yanchor="middle",      
+            y=0.5,                 
+            xanchor="left",        
+            x=1.05                 
         ),
         plot_bgcolor='white', paper_bgcolor='white', height=650, margin=dict(l=60, r=60, t=30, b=60)
     )

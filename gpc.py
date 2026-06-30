@@ -8,26 +8,67 @@ import math
 
 st.set_page_config(page_title="GPC Multi-File Overlay Dashboard", layout="wide")
 
-# Custom CSS for a clean, professional, and modern laboratory dashboard style
+# Modern and Professional UI Customization
 st.markdown("""
     <style>
-        .main { background-color: #f8f9fa; }
-        .block-container { padding-top: 1.5rem; padding-bottom: 1.5rem; }
-        h1 { color: #0f172a; font-weight: 700; font-size: 2.2rem; margin-bottom: 0.2rem; }
+        /* Base page background */
+        .main { background-color: #f8fafc; }
+        .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+        
+        /* Modern Typography */
+        h1 { color: #0f172a; font-weight: 800; font-size: 2.4rem; margin-bottom: 0.5rem; }
+        h2 { color: #1e293b; font-weight: 700; margin-top: 1.5rem; }
         h3 { color: #334155; font-weight: 600; margin-top: 1rem; }
-        div.stButton > button:first-child {
-            background-color: #2563eb; color: white; border-radius: 6px; border: none;
-            padding: 0.5rem 2rem; font-weight: 500;
+        p { color: #64748b; font-size: 1rem; }
+        
+        /* Form & Component Styling */
+        div[data-testid="stForm"] {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
         }
-        .stDataFrame { border: 1px solid #e2e8f0; border-radius: 8px; }
+        
+        /* Custom Button */
+        div.stButton > button:first-child {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: white;
+            border-radius: 8px;
+            border: none;
+            padding: 0.6rem 2.5rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px -1px rgb(37 99 235 / 0.2);
+        }
+        div.stButton > button:first-child:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+            box-shadow: 0 6px 12px -1px rgb(37 99 235 / 0.3);
+        }
+        
+        /* Interactive Metric Cards */
+        .metric-container {
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        }
+        .metric-value { font-size: 1.6rem; font-weight: 700; color: #1e3a8a; }
+        .metric-label { font-size: 0.85rem; color: #64748b; font-weight: 500; }
+        
+        /* Dataframe border smoothness */
+        .stDataFrame { border: 1px solid #e2e8f0; border-radius: 8px; background-color: white; }
     </style>
 """, unsafe_allow_html=True)
 
+# Main Dashboard Header Block
 st.title("📊 GPC Multi-File Overlay Dashboard")
-st.write("Upload GPC files to overlay molecular profiles with advanced chart-embedded Excel exporting tools.")
+st.write("Upload Multiple GPC files to automatically compile molecular weight profiles and export publication-ready Excel reports.")
 st.markdown("---")
 
-# Initialize Session States to prevent data from disappearing on download action
+# Initialize Session States
 if "data_mmd_list" not in st.session_state:
     st.session_state.data_mmd_list = []
 if "results_list" not in st.session_state:
@@ -37,13 +78,18 @@ if "global_min_logm" not in st.session_state:
 if "global_max_logm" not in st.session_state:
     st.session_state.global_max_logm = 0
 
-with st.form(key="gpc_upload_form"):
-    uploaded_files = st.file_uploader(
-        "Select GPC Files (.xls / .xlsx)", 
-        type=["xlsx", "xls"], 
-        accept_multiple_files=True
-    )
-    submit_button = st.form_submit_button(label="🚀 Process and Overlay Data")
+# --- Sidebar Controls for Uploading (Better UX Layout) ---
+with st.sidebar:
+    st.header("⚙️ Control Panel")
+    st.write("Configure and upload raw analytical documents.")
+    
+    with st.form(key="gpc_upload_form"):
+        uploaded_files = st.file_uploader(
+            "Select GPC Files (.xls / .xlsx)", 
+            type=["xlsx", "xls"], 
+            accept_multiple_files=True
+        )
+        submit_button = st.form_submit_button(label="🚀 Process & Overlay Data")
 
 # Process file calculations upon submit trigger
 if submit_button and uploaded_files:
@@ -132,10 +178,28 @@ if st.session_state.results_list:
     df_summary_transposed.insert(0, "unit", df_summary_transposed.index.map(units))
     df_summary_transposed.index.name = "GPC-IR"
 
+    # --- Analytics Highlight Summary Cards (New UX Feature) ---
+    st.subheader("💡 Key Sample Highlights")
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    with m_col1:
+        avg_mw = df_summary["Mw"].mean() if "Mw" in df_summary.columns else 0
+        st.markdown(f'<div class="metric-container"><div class="metric-value">{int(round(avg_mw)):,}</div><div class="metric-label">Average Mw (g/mol)</div></div>', unsafe_allow_html=True)
+    with m_col2:
+        avg_pdi = df_summary["Mw / Mn"].mean() if "Mw / Mn" in df_summary.columns else 0
+        st.markdown(f'<div class="metric-container"><div class="metric-value">{avg_pdi:.2f}</div><div class="metric-label">Average PDI (Mw/Mn)</div></div>', unsafe_allow_html=True)
+    with m_col3:
+        total_samples = len(df_summary)
+        st.markdown(f'<div class="metric-container"><div class="metric-value">{total_samples}</div><div class="metric-label">Total Samples Analysed</div></div>', unsafe_allow_html=True)
+    with m_col4:
+        max_scb = df_summary["Bulk SCB / 1000TC"].max() if "Bulk SCB / 1000TC" in df_summary.columns else 0
+        st.markdown(f'<div class="metric-container"><div class="metric-value">{max_scb:.1f}</div><div class="metric-label">Max Bulk SCB / 1000TC</div></div>', unsafe_allow_html=True)
+    
+    st.write("")
+
     # --- Header Action Block ---
     col_title, col_download = st.columns([3, 1])
     with col_title:
-        st.subheader("📋 GPC-IR Summary Report")
+        st.subheader("📋 Compiled GPC-IR Summary Report")
     with col_download:
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -148,7 +212,6 @@ if st.session_state.results_list:
             # ---------------------------------------------------------
             # 🎨 COLOR FORMATTING DEFINITIONS
             # ---------------------------------------------------------
-            # 1. Summary Report Formats
             summary_header_format = workbook.add_format({
                 'bg_color': '#1E3A8A', 'font_color': '#FFFFFF', 'bold': True,
                 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#94A3B8'
@@ -164,7 +227,6 @@ if st.session_state.results_list:
                 'bg_color': '#F8FAFC', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E2E8F0'
             })
             
-            # 2. Raw Data Formats
             dark_header_format = workbook.add_format({
                 'bg_color': '#1E3A8A', 'font_color': '#FFFFFF', 'bold': True,
                 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#94A3B8'
@@ -180,19 +242,14 @@ if st.session_state.results_list:
             # ---------------------------------------------------------
             # ✨ BEAUTIFY SUMMARY REPORT (OVERWRITING CELLS)
             # ---------------------------------------------------------
-            # Headers
             worksheet_summary.write(0, 0, "GPC-IR", summary_header_format)
             for col_num, col_name in enumerate(df_summary_transposed.columns):
                 worksheet_summary.write(0, col_num + 1, col_name, summary_header_format)
 
-            # Data Rows (Zebra Stripes & Bold Index)
             for row_num, (index_val, row_data) in enumerate(df_summary_transposed.iterrows()):
                 fmt = summary_data_even if row_num % 2 == 0 else summary_data_odd
-                
-                # Write Index Label
                 worksheet_summary.write(row_num + 1, 0, index_val, summary_index_format)
                 
-                # Write Data Cells
                 for col_num, cell_val in enumerate(row_data):
                     if index_val in ["Mw", "Mn", "Mz", "Mz1", "Mv", "Mp"] and pd.notna(cell_val) and col_num > 0:
                         worksheet_summary.write_number(row_num + 1, col_num + 1, int(cell_val), fmt)
@@ -202,11 +259,18 @@ if st.session_state.results_list:
                         val_to_write = "" if pd.isna(cell_val) else str(cell_val)
                         worksheet_summary.write(row_num + 1, col_num + 1, val_to_write, fmt)
 
-            # Adjust Column Widths for Summary Report
-            worksheet_summary.set_column(0, 0, 24)
-            worksheet_summary.set_column(1, 1, 10)
-            for col_idx in range(2, len(df_summary_transposed.columns) + 1):
-                worksheet_summary.set_column(col_idx, col_idx, 18)
+            # ---------------------------------------------------------
+            # 🛠️ [FIXED] DYNAMIC COLUMN WIDTH FOR SUMMARY REPORT
+            # ---------------------------------------------------------
+            # ส่วนที่แก้ปัญหา: ขยายขนาดคอลัมน์ในชีตแรกตามความยาวสูงสุดของชื่อตัวอย่างอัตโนมัติ
+            worksheet_summary.set_column(0, 0, 24) # คอลัมน์ดัชนีชี้วัด (GPC-IR)
+            worksheet_summary.set_column(1, 1, 12) # คอลัมน์หน่วย (unit)
+            
+            for col_num, col_name in enumerate(df_summary_transposed.columns):
+                if col_name != "unit":
+                    # ตรวจสอบหาความยาวสูงสุดของชื่อคอลัมน์ เพื่อปรับหน้ากว้างให้กว้างขึ้นอย่างเหมาะสม (+ 6 ตัวอักษรเผื่อความกว้างปลอดภัย)
+                    max_header_len = len(str(col_name)) + 6
+                    worksheet_summary.set_column(col_num + 1, col_num + 1, max(max_header_len, 22))
 
             # ---------------------------------------------------------
             # 📋 POPULATE RAW MMD DATA SHEET
@@ -236,7 +300,7 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # Adjust Column Widths for Raw Data
+            # Adjust Column Widths for Raw Data Sheet
             current_col_idx = 0
             for item in st.session_state.data_mmd_list:
                 df_item = item["df"]
@@ -267,7 +331,7 @@ if st.session_state.results_list:
                     'name':       f"{item['file_name']} (SCB / 1000TC)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
-                    'y2_axis':    1,  
+                    'y2_axis':     1,  
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
@@ -290,11 +354,11 @@ if st.session_state.results_list:
                 'visible': True
             })
             
-            chart_master.set_size({'width': 850, 'height': 500})
+            chart_master.set_size({'width': 900, 'height': 520})
             worksheet_summary.insert_chart('B18', chart_master)
         
         st.download_button(
-            label="📥 Download Excel Output",
+            label="📥 Download Comprehensive Excel Report",
             data=buffer.getvalue(),
             file_name="GPC_Overlay_Comprehensive_Report.xlsx",
             mime="application/vnd.ms-excel",
@@ -308,24 +372,24 @@ if st.session_state.results_list:
     }
     for sample_col in df_summary_transposed.columns:
         if sample_col != "unit":
-            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=115) 
+            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=140) 
 
     st.dataframe(
         df_summary_transposed.style.format(
-            formatter=lambda x: f"{int(x)}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
+            formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=False, 
+        use_container_width=True, 
         column_config=streamlit_col_config
     )
     st.markdown("---")
 
 # --- Section 2: Dual Y-Axis Clean Overlay Plot ---
 if st.session_state.data_mmd_list:
-    st.subheader("📈 MWD & SCB/1000TC Overlay Profile")
+    st.subheader("📈 Interactive Distribution Profile (MWD & SCB Overlay)")
     
     fig = go.Figure()
-    colors = px.colors.qualitative.Plotly
+    colors = px.colors.qualitative.Safe # มู้ดโทนสีสวยสบายตา สไตล์แล็บมาตรฐานสากล
     
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
@@ -351,7 +415,7 @@ if st.session_state.data_mmd_list:
         if col_scb_idx is not None and col_scb_idx > 0:
             fig.add_trace(go.Scatter(
                 x=df.iloc[:, col_scb_idx - 1], y=df.iloc[:, col_scb_idx],
-                mode='lines', name=f"{f_name} (SCB / 1000TC)",  
+                mode='lines', name=f"{f_name} (SCB)",  
                 line=dict(color=color, width=2, dash='dashdot'), yaxis='y2'
             ))
     
@@ -378,16 +442,17 @@ if st.session_state.data_mmd_list:
         ),
         hovermode="x unified",
         legend=dict(
-            orientation="v",       
-            yanchor="middle",      
-            y=0.5,                 
-            xanchor="left",        
-            x=1.05                 
+            orientation="h", 
+            yanchor="bottom",      
+            y=-0.25,                 
+            xanchor="center",        
+            x=0.5                 
         ),
-        plot_bgcolor='white', paper_bgcolor='white', height=650, margin=dict(l=60, r=60, t=30, b=60)
+        plot_bgcolor='white', paper_bgcolor='white', height=600, margin=dict(l=60, r=60, t=20, b=80)
     )
     
     st.plotly_chart(fig, use_container_width=True)
             
 elif not uploaded_files:
-    st.info("💡 Please upload GPC Excel files inside the box above and click 'Process and Overlay Data'.")
+    # Beautiful Empty State Guide
+    st.info("💡 Control Panel ในฝั่งซ้ายมือเปิดใช้งานอยู่! กรุณาเลือกไฟล์ข้อสรุป GPC (.xlsx) และกดคำสั่ง 'Process & Overlay Data' เพื่อดูแดชบอร์ด")

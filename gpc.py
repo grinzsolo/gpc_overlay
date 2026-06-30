@@ -127,11 +127,10 @@ if submit_button and uploaded_files:
                 st.error(f"Error reading file {file.name}: {e}")
                 
         if all_min_logm and all_max_logm:
-            # Floor and ceil calculations to guarantee strict clean integer intervals
             st.session_state.global_min_logm = int(math.floor(min(all_min_logm) - 2.0))
             st.session_state.global_max_logm = int(math.ceil(max(all_max_logm) + 2.0))
 
-# Render active UI elements from persistent sessions
+# Render active UI elements from sessions
 if st.session_state.results_list:
     df_summary = pd.DataFrame(st.session_state.results_list)
     df_summary.set_index("Sample Name", inplace=True)
@@ -146,14 +145,6 @@ if st.session_state.results_list:
     df_summary_transposed.insert(0, "unit", df_summary_transposed.index.map(units))
     df_summary_transposed.index.name = "GPC-IR"
 
-    # Compile flattened Horizontal dataframes
-    horizontal_raw_list = []
-    for item in st.session_state.data_mmd_list:
-        temp_df = item["df"].copy()
-        temp_df.columns = [f"{item['file_name']}_{col}" for col in temp_df.columns]
-        horizontal_raw_list.append(temp_df)
-    master_raw_horizontal = pd.concat(horizontal_raw_list, axis=1)
-
     # --- Header Action Block ---
     col_title, col_download = st.columns([3, 1])
     with col_title:
@@ -162,38 +153,62 @@ if st.session_state.results_list:
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_summary_transposed.to_excel(writer, sheet_name='Summary_Report', index=True)
-            master_raw_horizontal.to_excel(writer, sheet_name='Raw_Data_MMD', index=False)
             
             workbook  = writer.book
             worksheet_summary = writer.sheets['Summary_Report']
-            worksheet_raw = writer.sheets['Raw_Data_MMD']
             
-            # --- 3. Sheet Background Coloring Logic (Zebra Color Segments) ---
-            # Set soft pastel colors for distinct identification
-            colors_palette = ['#F1F5F9', '#EFF6FF', '#F0FDF4', '#FEF2F2', '#FFFBEB']
+            # Create the custom second sheet for Raw Data layout explicitly
+            worksheet_raw = workbook.add_worksheet('Raw_Data_MMD')
             
+            # --- Dark Color Theme Styles Configuration ---
+            dark_header_format = workbook.add_format({
+                'bg_color': '#1E3A8A', # Classic Dark Navy Blue
+                'font_color': '#FFFFFF',
+                'bold': True,
+                'align': 'center',
+                'valign': 'vcenter',
+                'border': 1,
+                'border_color': '#94A3B8'
+            })
+            
+            soft_stripe_formats = [
+                workbook.add_format({'bg_color': '#F8FAFC', 'border': 1, 'border_color': '#E2E8F0'}),
+                workbook.add_format({'bg_color': '#EFF6FF', 'border': 1, 'border_color': '#E2E8F0'}),
+                workbook.add_format({'bg_color': '#F0FDF4', 'border': 1, 'border_color': '#E2E8F0'}),
+                workbook.add_format({'bg_color': '#FEF2F2', 'border': 1, 'border_color': '#E2E8F0'}),
+                workbook.add_format({'bg_color': '#FFFBEB', 'border': 1, 'border_color': '#E2E8F0'})
+            ]
+            
+            # --- 1. Populate Raw MMD Sheet with Multi-Level Dark Headers ---
             current_col_idx = 0
             for file_idx, item in enumerate(st.session_state.data_mmd_list):
-                num_cols_in_set = len(item["df"].columns)
-                color_hex = colors_palette[file_idx % len(colors_palette)]
+                df_item = item["df"]
+                num_cols = len(df_item.columns)
+                sample_name = item["file_name"]
                 
-                # Format block setting background fills
-                custom_format = workbook.add_format({
-                    'bg_color': color_hex,
-                    'border': 1,
-                    'border_color': '#CBD5E1'
-                })
-                
-                # Apply background color block over the specified coordinate columns layout
-                worksheet_raw.set_column(
-                    current_col_idx, 
-                    current_col_idx + num_cols_in_set - 1, 
-                    15, 
-                    custom_format
+                # Row 1: Merge range across the sample data set width for the Sample Name
+                worksheet_raw.merge_range(
+                    0, current_col_idx, 0, current_col_idx + num_cols - 1, 
+                    sample_name, dark_header_format
                 )
-                current_col_idx += num_cols_in_set
+                
+                # Row 2: Write specific raw data column subtitles cleanly
+                for sub_col_idx, col_name in enumerate(df_item.columns):
+                    worksheet_raw.write(1, current_col_idx + sub_col_idx, col_name, dark_header_format)
+                
+                # Rows 3+: Write the cell matrix values and apply background tints
+                active_cell_format = soft_stripe_formats[file_idx % len(soft_stripe_formats)]
+                for r_idx in range(len(df_item)):
+                    for c_idx in range(num_cols):
+                        cell_val = df_item.iloc[r_idx, c_idx]
+                        if pd.notna(cell_val):
+                            worksheet_raw.write_number(r_idx + 2, current_col_idx + c_idx, float(cell_val), active_cell_format)
+                        else:
+                            worksheet_raw.write(r_idx + 2, current_col_idx + c_idx, "", active_cell_format)
+                            
+                current_col_idx += num_cols
 
-            # --- 1. Dual Y-Axis Chart Integration Logic ---
+            # --- 2. Chart Native Overlay Integration with Rigid Right-Axis Tracking ---
             chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
@@ -201,44 +216,39 @@ if st.session_state.results_list:
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
                 
-                # MWD Profile Sequence
                 chart_mwd.add_series({
                     'name':       f"{item['file_name']} (MWD)",
-                    'categories': ['Raw_Data_MMD', 1, col_offset, df_len, col_offset],
-                    'values':     ['Raw_Data_MMD', 1, col_offset + 1, df_len, col_offset + 1],
+                    'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
+                    'values':     ['Raw_Data_MMD', 2, col_offset + 1, df_len + 1, col_offset + 1],
                     'line':       {'width': 2.2},
                 })
                 
-                # SCB Profile Sequence
                 chart_scb.add_series({
                     'name':       f"{item['file_name']} (SCB)",
-                    'categories': ['Raw_Data_MMD', 1, col_offset + 4, df_len, col_offset + 4],
-                    'values':     ['Raw_Data_MMD', 1, col_offset + 5, df_len, col_offset + 5],
-                    'y2_axis':    True, # Bind securely to secondary axis configuration
+                    'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
+                    'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
+                    'y2_axis':    True, # Locks the series tightly to the secondary Y-Axis parameters
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
             
-            # Combine series and map axes
             chart_mwd.combine(chart_scb)
             chart_mwd.set_title({'name': 'GPC MWD & SCB Overlay Profile'})
             
-            # 2. X Axis Ticks Clean Intervals
             chart_mwd.set_x_axis({
                 'name': 'Log M',
                 'min': st.session_state.global_min_logm,
                 'max': st.session_state.global_max_logm,
-                'major_unit': 1 # Enforce integer intervals layout
+                'major_unit': 1
             })
             chart_mwd.set_y_axis({'name': 'MMD (Molecular Weight Distribution)'})
             
-            # Map axes values specifically to solve the disappearing right Y Axis issue
             scb_upper_limit = 5.0 if st.session_state.max_scb_value == 0.0 else st.session_state.max_scb_value * 5.0
             chart_mwd.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
                 'max': scb_upper_limit,
-                'visible': True # Explicit declaration ensures layout visibility
+                'visible': True # Binds and renders the missing right side column tick markers
             })
             
             chart_mwd.set_size({'width': 850, 'height': 500})
@@ -252,8 +262,10 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # UI Table Width View Render
-    col_table, col_spacer = st.columns([4, 1])
+    # --- 3. Optimized Grid View: Table Adjusted to Fit Content Tightly ---
+    # Calculates columns width multiplier based on uploaded file count
+    dynamic_ratio = min(max(len(st.session_state.results_list) * 1, 2), 4)
+    col_table, col_spacer = st.columns([dynamic_ratio, 5 - dynamic_ratio])
     with col_table:
         formatted_df = df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x)}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
@@ -261,10 +273,10 @@ if st.session_state.results_list:
         )
         st.dataframe(
             formatted_df,
-            use_container_width=False,
+            use_container_width=False, # Lock structure to stop wide layout distortion
             column_config={
-                "GPC-IR": st.column_config.Column("GPC-IR", width=220, required=True),
-                "unit": st.column_config.Column("unit", width=90)
+                "GPC-IR": st.column_config.Column("GPC-IR", width=190, required=True),
+                "unit": st.column_config.Column("unit", width=75)
             }
         )
     st.markdown("---")
@@ -308,12 +320,19 @@ if st.session_state.data_mmd_list:
             title="Log M", showgrid=True, gridcolor='#e2e8f0',
             zeroline=True, zerolinecolor='#cbd5e1',
             range=[st.session_state.global_min_logm, st.session_state.global_max_logm],
-            dtick=1 # Force clean integers intervals on web interface
+            dtick=1
         ),
         yaxis=dict(title="MMD (Molecular Weight Distribution)", showgrid=True, gridcolor='#e2e8f0', side="left"),
         yaxis2=dict(title="SCB / 1000TC", showgrid=False, anchor="x", overlaying="y", side="right", range=[0, scb_upper_limit]),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        # --- 4. Legend Relocation Configuration Locked to Right-Hand Layout ---
+        legend=dict(
+            orientation="v",       # Vertical stack mapping layout
+            yanchor="middle",      # Anchor centerline balance
+            y=0.5,                 # Centered layout perfectly along y grid frame
+            xanchor="left",        # Binds left bounding box marker
+            x=1.05                 # Places layout elements outside to the right boundary frame
+        ),
         plot_bgcolor='white', paper_bgcolor='white', height=650, margin=dict(l=60, r=60, t=30, b=60)
     )
     

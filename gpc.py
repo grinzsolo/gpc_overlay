@@ -24,7 +24,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 GPC Multi-File Overlay Dashboard")
-st.write("Upload GPC files and click Submit to overlay molecular profiles and generate standard analytical reports.")
+st.write("Upload GPC files and click Submit to overlay molecular profiles using strict sequential column matching.")
 st.markdown("---")
 
 # Wrap the file uploader and submit action inside a clean Streamlit Form
@@ -166,7 +166,8 @@ if submit_button and uploaded_files:
             st.subheader("📈 MWD & SCB Overlay Profile")
             
             fig = go.Figure()
-            colors = px.colors.qualitative.Slate
+            # Fixed Color Attribute: Using a standard stable qualitative color palette
+            colors = px.colors.qualitative.Plotly
             
             for i, data_item in enumerate(data_mmd_list):
                 f_name = data_item["file_name"]

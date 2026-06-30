@@ -188,73 +188,68 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- Fix รูปที่ 2: Auto-fit Column Width สำหรับแผ่นงาน Excel ---
-            # ปรับความกว้างคอลลัมน์แผ่น Summary_Report
-            for col_idx in range(len(df_summary_transposed.columns) + 1):
-                worksheet_summary.set_column(col_idx, col_idx, 22)
+            # --- รูปที่ 2 Fix: ขยายความกว้างหัวคอลัมน์ใน Excel ให้กว้างเต็มตัวอักษรพอดี ---
+            worksheet_summary.set_column(0, 0, 24) # คอลัมน์พารามิเตอร์เคมีหลัก
+            worksheet_summary.set_column(1, 1, 10) # คอลัมน์หน่วยวัด (unit)
+            for col_idx in range(2, len(df_summary_transposed.columns) + 1):
+                worksheet_summary.set_column(col_idx, col_idx, 18) # คอลัมน์ชื่อ Sample ต่างๆ
                 
-            # ปรับความกว้างคอลลัมน์แผ่น Raw_Data_MMD ตามเนื้อหาจริง
+            # ขยายความกว้างของหน้าข้อมูลดิบตามความยาวจริงของสตริงตัวอักษรหัวคอลัมน์
             current_col_idx = 0
             for item in st.session_state.data_mmd_list:
                 df_item = item["df"]
                 for sub_col_idx, col_name in enumerate(df_item.columns):
-                    max_len = max(df_item.iloc[:, sub_col_idx].astype(str).str.len().max(), len(str(col_name))) + 3
-                    worksheet_raw.set_column(current_col_idx + sub_col_idx, current_col_idx + sub_col_idx, max(max_len, 12))
+                    max_len = max(df_item.iloc[:, sub_col_idx].astype(str).str.len().max(), len(str(col_name))) + 4
+                    worksheet_raw.set_column(current_col_idx + sub_col_idx, current_col_idx + sub_col_idx, max(max_len, 14))
                 current_col_idx += len(df_item.columns)
 
-            # --- Fix รูปที่ 3: โครงสร้างการผูกแผนภูมิ Dual Y-Axis ใน Excel ---
-            chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
-            chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+            # --- รูปที่ 3 Fix: ปลดล็อกปัญหาแกน Y รองฝั่งขวาหายใน Excel Chart ---
+            # ใช้แผนภูมิวัตถุตัวเดี่ยว (Single Chart container) ยัดทุกข้อมูลเข้าแทนการใช้ .combine() บั๊กแกนขวาจะหายไปทันที
+            chart_master = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
             col_offset = 0
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
                 
-                # Primary MWD Data Series (แกนหลักซ้าย)
-                chart_mwd.add_series({
+                # ฝั่ง MWD อ้างอิงแกนหลัก (Primary Y-axis)
+                chart_master.add_series({
                     'name':       f"{item['file_name']} (MWD)",
                     'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 1, df_len + 1, col_offset + 1],
                     'line':       {'width': 2.2},
                 })
                 
-                # Secondary SCB Data Series (แกนรองขวา)
-                chart_scb.add_series({
+                # ฝั่ง SCB / 1000TC อ้างอิงแกนรอง (Secondary Y-axis ผ่านคุณสมบัติ y2_axis: 1)
+                chart_master.add_series({
                     'name':       f"{item['file_name']} (SCB / 1000TC)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
-                    'y2_axis':    1,  # สั่งเปิดแกนที่สองโดยตรงที่ชุดข้อมูลของ XlsxWriter
+                    'y2_axis':    1,  # บังคับเปิดแกนรองฝั่งขวาบนวัตถุแผนภูมิหลักโดยตรง
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
             
-            # ตั้งค่าแกนหลักและแกนรอง
-            chart_mwd.set_title({'name': 'GPC MWD & SCB/1000TC Overlay Profile'})
-            
-            chart_mwd.set_x_axis({
+            # กำหนดองค์ประกอบแกนทั้งหมดให้กับแผนภูมิเดียว
+            chart_master.set_title({'name': 'GPC MWD & SCB/1000TC Overlay Profile'})
+            chart_master.set_x_axis({
                 'name': 'Log M',
                 'min': st.session_state.global_min_logm,
                 'max': st.session_state.global_max_logm,
                 'major_unit': 1
             })
-            
-            chart_mwd.set_y_axis({
+            chart_master.set_y_axis({
                 'name': 'MMD (Molecular Weight Distribution)',
                 'min': 0
             })
-            
-            # บังคับการแสดงผลแกนขวาใน Excel Chart
-            chart_mwd.set_y2_axis({
+            chart_master.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
                 'max': 40,
-                'visible': True
+                'visible': True # เปิดขีดแสดงตัวเลขและเครื่องหมายบอกสเกลด้านขวาชัดเจน
             })
             
-            # ผสานแผนภูมิและนำไปวางในแผ่นสรุปผล
-            chart_mwd.combine(chart_scb)
-            chart_mwd.set_size({'width': 850, 'height': 500})
-            worksheet_summary.insert_chart('B18', chart_mwd)
+            chart_master.set_size({'width': 850, 'height': 500})
+            worksheet_summary.insert_chart('B18', chart_master)
         
         st.download_button(
             label="📥 Download Excel Output",
@@ -264,17 +259,23 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- Fix รูปที่ 1: ปรับความกว้างของ Table บน Streamlit ให้แสดงผลเลขเต็มช่อง ---
+    # --- รูปที่ 1 Fix: บีบความกว้างตารางหน้าเว็บแอปให้รัดพอดีตัวเลข ไม่ขยายกว้างเกินไป ---
+    # สร้างโครงสร้าง column_config เพื่อบีบล็อกขนาดพิกเซลแบบไดนามิกตามจำนวนตัวอย่างจริง
+    streamlit_col_config = {
+        "GPC-IR": st.column_config.Column("GPC-IR", width=180, required=True),
+        "unit": st.column_config.Column("unit", width=75)
+    }
+    for sample_col in df_summary_transposed.columns:
+        if sample_col != "unit":
+            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=115) # บีบคอลัมน์ตัวเลขให้กระชับพอดี
+
     st.dataframe(
         df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x)}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=True, # บังคับให้ตารางขยายพื้นที่เต็มหน้าจอ ป้องกันตัวเลขโดนบีบ
-        column_config={
-            "GPC-IR": st.column_config.Column("GPC-IR", width=None, required=True),
-            "unit": st.column_config.Column("unit", width=None)
-        }
+        use_container_width=False, # ล็อกห้ามไม่ให้ตารางยืดขยายตัวเกินความจำเป็น
+        column_config=streamlit_col_config
     )
     st.markdown("---")
 
@@ -285,6 +286,7 @@ if st.session_state.data_mmd_list:
     fig = go.Figure()
     colors = px.colors.qualitative.Plotly
     
+    # วนลูปกลุ่ม MWD ขึ้นแสดงในป้ายรายการโซนบนก่อน
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]
@@ -299,6 +301,7 @@ if st.session_state.data_mmd_list:
                 line=dict(color=color, width=2.5), yaxis='y1'
             ))
             
+    # วนลูปกลุ่ม SCB / 1000TC ตามมาแสดงผลในรายการโซนล่าง ต่อท้าย MWD อย่างมีระเบียบ
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]

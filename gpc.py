@@ -2,27 +2,51 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+import io
 
 st.set_page_config(page_title="GPC Multi-File Overlay Dashboard", layout="wide")
 
+# Custom CSS for a clean, professional, and modern laboratory dashboard style
+st.markdown("""
+    <style>
+        .main { background-color: #f8f9fa; }
+        .block-container { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+        h1 { color: #0f172a; font-weight: 700; font-size: 2.2rem; margin-bottom: 0.2rem; }
+        h3 { color: #334155; font-weight: 600; margin-top: 1rem; }
+        
+        /* Style for the custom process button inside the form */
+        div.stButton > button:first-child {
+            background-color: #2563eb; color: white; border-radius: 6px; border: none;
+            padding: 0.5rem 2rem; font-weight: 500;
+        }
+        .stDataFrame { border: 1px solid #e2e8f0; border-radius: 8px; }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📊 GPC Multi-File Overlay Dashboard")
-st.write("Upload GPC files (Up to 5 files) to overlay MWD, SCB plots and compare the summary results table.")
+st.write("Upload GPC files and click Submit to overlay molecular profiles and generate standard analytical reports.")
+st.markdown("---")
 
-# File uploader section (Restricted to maximum 5 files)
-uploaded_files = st.file_uploader(
-    "Upload GPC Files (.xls / .xlsx)", 
-    type=["xlsx", "xls"], 
-    accept_multiple_files=True
-)
+# Wrap the file uploader and submit action inside a clean Streamlit Form
+with st.form(key="gpc_upload_form"):
+    uploaded_files = st.file_uploader(
+        "Select GPC Files (.xls / .xlsx)", 
+        type=["xlsx", "xls"], 
+        accept_multiple_files=True
+    )
+    
+    # Form submission trigger button
+    submit_button = st.form_submit_button(label="🚀 Process and Overlay Data")
 
-if uploaded_files:
+# Execution logic starts only when the user explicitly clicks the Submit Button
+if submit_button and uploaded_files:
     if len(uploaded_files) > 5:
-        st.error("⚠️ Maximum 5 files allowed. Please remove excess files.")
+        st.error("⚠️ Maximum 5 files allowed. Please remove excess files and submit again.")
     else:
         data_mmd_list = []
         results_list = []
         
-        # Loop through each uploaded file
+        # Loop through each uploaded file to extract information
         for file in uploaded_files:
             file_name = file.name
             
@@ -41,7 +65,7 @@ if uploaded_files:
                 else:
                     df_res = pd.read_excel(file, sheet_name=1, header=None)
                 
-                # Clean up column whitespace names
+                # Standardize column names by dropping empty spaces
                 df_mmd.columns = [str(c).strip() for c in df_mmd.columns]
                 
                 data_mmd_list.append({
@@ -84,15 +108,13 @@ if uploaded_files:
             except Exception as e:
                 st.error(f"Error reading file {file_name}: {e}")
 
-        # --- Section 1: GPC Summary Report Table ---
+        # --- Data Compilation for Tables ---
         if results_list:
-            st.subheader("📋 GPC-IR Summary Report")
-            
             df_summary = pd.DataFrame(results_list)
             df_summary.set_index("Sample Name", inplace=True)
             df_summary_transposed = df_summary.T
             
-            # Map standard GPC units based on the image format reference (image_029ebd.png)
+            # Map standard GPC units
             units = {
                 "Mw": "g/mol", "Mn": "g/mol", "Mw / Mn": "", "Mz": "g/mol", 
                 "Mz1": "g/mol", "Mv": "g/mol", "Mp": "g/mol", "IV": "dL/g", 
@@ -101,83 +123,128 @@ if uploaded_files:
             }
             df_summary_transposed.insert(0, "unit", df_summary_transposed.index.map(units))
             df_summary_transposed.index.name = "GPC-IR"
-            
-            st.dataframe(df_summary_transposed, use_container_width=True)
 
-        # --- Section 2: Dual Y-Axis Overlay Plot ---
+            # Create Master Raw Data DataFrame for multi-sheet export
+            master_raw_df = pd.DataFrame()
+            for item in data_mmd_list:
+                temp_df = item["df"].copy()
+                temp_df.insert(0, "Source File", item["file_name"])
+                master_raw_df = pd.concat([master_raw_df, temp_df], ignore_index=True)
+
+            # --- Layout Grid: Action Headers ---
+            col_title, col_download = st.columns([3, 1])
+            with col_title:
+                st.subheader("📋 GPC-IR Summary Report")
+            with col_download:
+                # Multi-Sheet Excel Generation
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df_summary_transposed.to_excel(writer, sheet_name='Summary_Report', index=True)
+                    master_raw_df.to_excel(writer, sheet_name='Raw_Data_MMD', index=False)
+                
+                st.download_button(
+                    label="📥 Download Excel Output",
+                    data=buffer.getvalue(),
+                    file_name="GPC_Overlay_Comprehensive_Report.xlsx",
+                    mime="application/vnd.ms-excel",
+                    use_container_width=True
+                )
+
+            # --- Layout Optimization for Table Width ---
+            # Columns restriction to prevent excessive horizontal stretching
+            col_table, col_spacer = st.columns([3, 2])
+            with col_table:
+                st.dataframe(
+                    df_summary_transposed.style.format(precision=2, na_rep="-"),
+                    use_container_width=False
+                )
+            
+            st.markdown("---")
+
+        # --- Section 2: Dual Y-Axis Clean Overlay Plot ---
         if data_mmd_list:
             st.subheader("📈 MWD & SCB Overlay Profile")
             
             fig = go.Figure()
-            colors = px.colors.qualitative.Plotly 
+            colors = px.colors.qualitative.Slate
             
             for i, data_item in enumerate(data_mmd_list):
                 f_name = data_item["file_name"]
                 df = data_item["df"]
                 color = colors[i % len(colors)]
                 
-                # Case-insensitive column search to handle any dynamic naming formats
-                col_logm = [c for c in df.columns if 'logm' in c.lower()]
-                col_mmd = [c for c in df.columns if 'mmd' in c.lower()]
-                col_scb = [c for c in df.columns if 'scb' in c.lower() or '1000tc' in c.lower()]
+                # Match columns case-insensitively
+                cols_lower = [c.lower() for c in df.columns]
                 
-                if col_logm and col_mmd:
-                    # 1. Plot MWD profile (Left Y-axis - Solid line)
+                # Find target column indices
+                col_mmd_idx = next((idx for idx, c in enumerate(cols_lower) if 'mmd' in c), None)
+                col_scb_idx = next((idx for idx, c in enumerate(cols_lower) if 'scb' in c or '1000tc' in c), None)
+                
+                # 1. Plot MWD profile (Left Y-axis) using Sequential Column Matching (Index - 1)
+                if col_mmd_idx is not None and col_mmd_idx > 0:
+                    col_mwd_logm_idx = col_mmd_idx - 1
+                    
                     fig.add_trace(go.Scatter(
-                        x=df[col_logm[0]],
-                        y=df[col_mmd[0]],
+                        x=df.iloc[:, col_mwd_logm_idx],
+                        y=df.iloc[:, col_mmd_idx],
                         mode='lines',
-                        name=f"{f_name}",
+                        name=f"{f_name} (MWD)",
                         line=dict(color=color, width=2.5),
                         yaxis='y1'
                     ))
                     
-                if col_logm and col_scb:
-                    # 2. Plot SCB profile (Right Y-axis - Dash-dot line)
+                # 2. Plot SCB profile (Right Y-axis) using Sequential Column Matching (Index - 1)
+                if col_scb_idx is not None and col_scb_idx > 0:
+                    col_scb_logm_idx = col_scb_idx - 1
+                    
                     fig.add_trace(go.Scatter(
-                        x=df[col_logm[0]],
-                        y=df[col_scb[0]],
+                        x=df.iloc[:, col_scb_logm_idx],
+                        y=df.iloc[:, col_scb_idx],
                         mode='lines',
-                        name=f"{f_name} SCB/1000TC",
+                        name=f"{f_name} (SCB)",
                         line=dict(color=color, width=2, dash='dashdot'),
                         yaxis='y2'
                     ))
             
-            # Figure layout configuration for strict standard clean grid layout
+            # Figure layout configuration for standard clean scientific layout
             fig.update_layout(
                 xaxis=dict(
-                    title="LogM", 
+                    title="Log M", 
                     showgrid=True, 
-                    gridcolor='lightgray',
+                    gridcolor='#e2e8f0',
                     zeroline=True,
-                    zerolinecolor='gray'
+                    zerolinecolor='#cbd5e1'
                 ),
                 yaxis=dict(
-                    title="MMD",
+                    title="MMD (Molecular Weight Distribution)",
                     showgrid=True,
-                    gridcolor='lightgray',
-                    side="left"
+                    gridcolor='#e2e8f0',
+                    side="left",
+                    titlefont=dict(color="#1e293b")
                 ),
                 yaxis2=dict(
                     title="SCB / 1000TC",
                     showgrid=False,
                     anchor="x",
                     overlaying="y",
-                    side="right"
+                    side="right",
+                    titlefont=dict(color="#1e293b")
                 ),
                 hovermode="x unified",
                 legend=dict(
-                    orientation="v", 
-                    yanchor="top", 
-                    y=0.5, 
-                    xanchor="left", 
-                    x=1.08
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=1.02, 
+                    xanchor="center", 
+                    x=0.5
                 ),
                 plot_bgcolor='white',
-                height=600,
-                margin=dict(l=50, r=50, t=20, b=50)
+                paper_bgcolor='white',
+                height=650,
+                margin=dict(l=60, r=60, t=30, b=60)
             )
             
             st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("💡 Please upload GPC Excel files to generate the dashboard profile.")
+            
+elif not uploaded_files:
+    st.info("💡 Please upload GPC Excel files inside the box above and click 'Process and Overlay Data'.")

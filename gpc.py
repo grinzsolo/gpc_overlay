@@ -178,16 +178,19 @@ if st.session_state.results_list:
     df_summary_transposed.insert(0, "unit", df_summary_transposed.index.map(units))
     df_summary_transposed.index.name = "GPC-IR"
 
-    # --- Analytics Highlight Summary Cards (ตัด Max Bulk SCB ออกเรียบร้อย) ---
+    # --- Analytics Highlight Summary Cards ---
     st.subheader("💡 Key Sample Highlights")
-    m_col1, m_col2, m_col3 = st.columns(3)
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
     with m_col1:
         avg_mw = df_summary["Mw"].mean() if "Mw" in df_summary.columns else 0
         st.markdown(f'<div class="metric-container"><div class="metric-value">{int(round(avg_mw)):,}</div><div class="metric-label">Average Mw (g/mol)</div></div>', unsafe_allow_html=True)
     with m_col2:
+        avg_mn = df_summary["Mn"].mean() if "Mn" in df_summary.columns else 0
+        st.markdown(f'<div class="metric-container"><div class="metric-value">{int(round(avg_mn)):,}</div><div class="metric-label">Average Mn (g/mol)</div></div>', unsafe_allow_html=True)
+    with m_col3:
         avg_pdi = df_summary["Mw / Mn"].mean() if "Mw / Mn" in df_summary.columns else 0
         st.markdown(f'<div class="metric-container"><div class="metric-value">{avg_pdi:.2f}</div><div class="metric-label">Average PDI (Mw/Mn)</div></div>', unsafe_allow_html=True)
-    with m_col3:
+    with m_col4:
         total_samples = len(df_summary)
         st.markdown(f'<div class="metric-container"><div class="metric-value">{total_samples}</div><div class="metric-label">Total Samples Analysed</div></div>', unsafe_allow_html=True)
     
@@ -329,22 +332,24 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- 🛠️ [FIXED] หน้าตาราง Web App จัดความกว้างให้พอดีๆ และขยายเต็มหน้าจอ ---
+    # --- 🛠️ [FIXED] ตั้งค่าความกว้างตารางใน Web App แบบพอดี ไม่ตกขอบ ---
     streamlit_col_config = {
+        # ล็อกความกว้างของคอลัมน์ชื่อและหน่วยให้แคบลง เพื่อเผื่อที่ให้ข้อมูล
         "GPC-IR": st.column_config.Column("GPC-IR", width="medium", required=True),
         "unit": st.column_config.Column("unit", width="small")
     }
+    
     for sample_col in df_summary_transposed.columns:
         if sample_col != "unit":
-            # ปรับสัดส่วนให้คอลัมน์ชื่อยาวๆ กางออกมาสวยพอดี ไม่โดนบีบอัดตัวหนังสือ
-            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width="large") 
+            # ปล่อยให้ Streamlit จัดการ auto-fit พื้นที่ที่เหลือ จะได้เฉลี่ยกันพอดีโดยไม่ตกขอบ
+            streamlit_col_config[sample_col] = st.column_config.Column(sample_col) 
 
     st.dataframe(
         df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=True, # บังคับให้ตารางยืดขยายตามสัดส่วนหน้าจอเต็มๆ 100%
+        use_container_width=True, # เปิดให้ตารางขยายเต็มกรอบแบบพอดี 100% ของพื้นที่จอ ช่วยแก้ปัญหาตกขอบ
         column_config=streamlit_col_config
     )
     st.markdown("---")
@@ -413,4 +418,4 @@ if st.session_state.data_mmd_list:
     st.plotly_chart(fig, use_container_width=True)
             
 elif not uploaded_files:
-    st.info("💡Please upload GPC files in the sidebar and click 'Process & Overlay Data' to view the dashboard.")
+    st.info("💡 Please upload GPC files in the sidebar and click 'Process & Overlay Data' to view the dashboard.")

@@ -408,7 +408,7 @@ if st.session_state.results_list:
             formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=True,   # ขยายเต็มความกว้าง container แทนการตัดด้วย horizontal scroll
+        use_container_width=False,  # ปิดการ stretch คอลัมน์ให้เต็ม container เพราะจะ override ความกว้างที่คำนวณไว้ ทำให้คอลัมน์กว้างเกินจำเป็น
         height=table_height,        # ตั้งความสูงพอดีจำนวนแถวจริง ป้องกัน vertical scroll bar / แถวว่าง
         column_config=streamlit_col_config
     )

@@ -344,28 +344,72 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- 🛠️ ตั้งค่าตาราง Web App: wrap ชื่อ sample ให้ enter ลงบรรทัดใหม่ได้ + โชว์เต็มไม่มี scroll bar ---
+    # --- 🛠️ ตั้งค่าตาราง Web App: 
+    #     - unit column แคบพอดีตัวอักษร
+    #     - sample column กว้างพอดีกับตัวเลขที่ยาวที่สุดในคอลัมน์นั้น
+    #     - ชื่อ sample ที่ยาว wrap ลงบรรทัดใหม่ได้ (จัดการด้วย CSS ด้านบนแล้ว)
+    #     - ไม่มี row ว่าง (null) ปนอยู่
+
+    def format_cell_for_width(val, index_val):
+        """ช่วยประเมินความยาวของค่าตามรูปแบบที่จะแสดงผลจริง เพื่อคำนวณความกว้างคอลัมน์"""
+        if pd.isna(val):
+            return "-"
+        if isinstance(val, (int, float)):
+            if float(val).is_integer():
+                return f"{int(val):,}"
+            return f"{val:.2f}"
+        return str(val)
+
+    # คำนวณความกว้าง unit column ให้พอดีกับข้อความ unit ที่ยาวที่สุด
+    unit_values = df_summary_transposed["unit"].fillna("").astype(str)
+    max_unit_len = max([len(v) for v in unit_values] + [len("unit")])
+    unit_col_width = max(60, min(100, max_unit_len * 9 + 30))
+
+    # คำนวณความกว้าง GPC-IR (index) column ให้พอดีกับชื่อ metric ที่ยาวที่สุด
+    max_index_len = max([len(str(v)) for v in df_summary_transposed.index] + [len("GPC-IR")])
+    index_col_width = max(120, min(220, max_index_len * 9 + 30))
+
     streamlit_col_config = {
-        "GPC-IR": st.column_config.Column("GPC-IR", width=160, required=True),
-        "unit": st.column_config.Column("unit", width=80)
+        "GPC-IR": st.column_config.Column("GPC-IR", width=index_col_width, required=True),
+        "unit": st.column_config.Column("unit", width=unit_col_width)
     }
-    
+
     for sample_col in df_summary_transposed.columns:
         if sample_col != "unit":
-            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=140) 
+            # ความกว้างตามตัวเลข/ค่าที่ยาวที่สุดในคอลัมน์นี้
+            formatted_vals = [
+                format_cell_for_width(val, idx)
+                for idx, val in zip(df_summary_transposed.index, df_summary_transposed[sample_col])
+            ]
+            max_val_len = max([len(v) for v in formatted_vals] + [1])
+            data_width = max_val_len * 9 + 30
 
-    # คำนวณความสูงให้พอดีกับจำนวนแถว เพื่อไม่ให้เกิด vertical scroll bar
+            # ความกว้างตามชื่อ sample (คำนวณจากคำที่ยาวที่สุดในชื่อ เพราะหัวคอลัมน์ wrap ได้)
+            header_words = str(sample_col).replace("_", " ").split(" ")
+            max_word_len = max([len(w) for w in header_words] + [1])
+            header_width = max_word_len * 8 + 30
+
+            sample_col_width = int(max(data_width, header_width, 90))
+            sample_col_width = min(sample_col_width, 220)  # กันไม่ให้กว้างเกินไปถ้าชื่อยาวมาก (จะ wrap แทน)
+
+            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=sample_col_width)
+
+    # ตัดแถวที่เป็น null ทั้งแถวออก (ไม่นับคอลัมน์ unit) ก่อนแสดงผล
+    data_only_cols = [c for c in df_summary_transposed.columns if c != "unit"]
+    df_display = df_summary_transposed[df_summary_transposed[data_only_cols].notna().any(axis=1)]
+
+    # คำนวณความสูงให้พอดีกับจำนวนแถวจริง (ไม่เผื่อแถวเกิน) เพื่อไม่ให้เกิด vertical scroll bar หรือแถวว่างท้ายตาราง
     row_height = 35
-    header_height = 60  # เผื่อพื้นที่ให้ชื่อ sample ที่ยาวขึ้นบรรทัดใหม่ได้
-    table_height = header_height + (len(df_summary_transposed) + 1) * row_height
+    header_height = 38
+    table_height = header_height + len(df_display) * row_height + 3  # +3 กันขอบล่างถูกตัด
 
     st.dataframe(
-        df_summary_transposed.style.format(
+        df_display.style.format(
             formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
         use_container_width=True,   # ขยายเต็มความกว้าง container แทนการตัดด้วย horizontal scroll
-        height=table_height,        # ตั้งความสูงพอดีจำนวนแถว ป้องกัน vertical scroll bar
+        height=table_height,        # ตั้งความสูงพอดีจำนวนแถวจริง ป้องกัน vertical scroll bar / แถวว่าง
         column_config=streamlit_col_config
     )
     st.markdown("---")

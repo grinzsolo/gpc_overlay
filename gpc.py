@@ -332,24 +332,23 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- 🛠️ [FIXED] ตั้งค่าความกว้างตารางใน Web App แบบพอดี ไม่ตกขอบ ---
+    # --- 🛠️ [FIXED] ตั้งค่าตาราง Web App ให้กะทัดรัด พอดีกับข้อมูล ---
     streamlit_col_config = {
-        # ล็อกความกว้างของคอลัมน์ชื่อและหน่วยให้แคบลง เพื่อเผื่อที่ให้ข้อมูล
-        "GPC-IR": st.column_config.Column("GPC-IR", width="medium", required=True),
-        "unit": st.column_config.Column("unit", width="small")
+        "GPC-IR": st.column_config.Column("GPC-IR", width=160, required=True),
+        "unit": st.column_config.Column("unit", width=80)
     }
     
     for sample_col in df_summary_transposed.columns:
         if sample_col != "unit":
-            # ปล่อยให้ Streamlit จัดการ auto-fit พื้นที่ที่เหลือ จะได้เฉลี่ยกันพอดีโดยไม่ตกขอบ
-            streamlit_col_config[sample_col] = st.column_config.Column(sample_col) 
+            # จำกัดความกว้างไว้ที่ประมาณ 140px เพื่อให้หุ้มข้อความพอดีๆ ไม่ยืดจนโล่ง
+            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=140) 
 
     st.dataframe(
         df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=True, # เปิดให้ตารางขยายเต็มกรอบแบบพอดี 100% ของพื้นที่จอ ช่วยแก้ปัญหาตกขอบ
+        use_container_width=False, # เปลี่ยนเป็น False เพื่อปิดการบังคับขยาย 100% (ตารางจะได้หดตัวลงมาพอดีข้อมูล)
         column_config=streamlit_col_config
     )
     st.markdown("---")

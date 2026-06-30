@@ -27,7 +27,6 @@ st.title("📊 GPC Multi-File Overlay Dashboard")
 st.write("Upload GPC files to overlay molecular profiles with advanced chart-embedded Excel exporting tools.")
 st.markdown("---")
 
-# Initialize Session States to prevent data from disappearing on download action
 if "data_mmd_list" not in st.session_state:
     st.session_state.data_mmd_list = []
 if "results_list" not in st.session_state:
@@ -47,7 +46,6 @@ with st.form(key="gpc_upload_form"):
     )
     submit_button = st.form_submit_button(label="🚀 Process and Overlay Data")
 
-# Process file calculations upon submit trigger
 if submit_button and uploaded_files:
     if len(uploaded_files) > 5:
         st.error("⚠️ Maximum 5 files allowed. Please remove excess files and submit again.")
@@ -74,13 +72,12 @@ if submit_button and uploaded_files:
                     "df": df_mmd
                 })
                 
-                # Dynamic range tracking for LogM widths
-                for col in df_mmd.columns:
-                    if 'logm' in col.lower():
-                        numeric_logm = pd.to_numeric(df_mmd[col], errors='coerce').dropna()
-                        if not numeric_logm.empty:
-                            all_min_logm.append(numeric_logm.min())
-                            all_max_logm.append(numeric_logm.max())
+                # Dynamic range tracking for LogM using main Column 0
+                if len(df_mmd.columns) > 0:
+                    numeric_logm = pd.to_numeric(df_mmd.iloc[:, 0], errors='coerce').dropna()
+                    if not numeric_logm.empty:
+                        all_min_logm.append(numeric_logm.min())
+                        all_max_logm.append(numeric_logm.max())
                 
                 # Trace highest SCB values across datasets
                 cols_lower_temp = [c.lower() for c in df_mmd.columns]
@@ -160,7 +157,7 @@ if st.session_state.results_list:
             
             # --- Dark Color Theme Styles Configuration ---
             dark_header_format = workbook.add_format({
-                'bg_color': '#1E3A8A', # Classic Dark Navy Blue
+                'bg_color': '#1E3A8A', 
                 'font_color': '#FFFFFF',
                 'bold': True,
                 'align': 'center',
@@ -184,7 +181,7 @@ if st.session_state.results_list:
                 num_cols = len(df_item.columns)
                 sample_name = item["file_name"]
                 
-                # Row 1: Merge range across Sample
+                # Row 1: Merge range across Sample Name
                 worksheet_raw.merge_range(
                     0, current_col_idx, 0, current_col_idx + num_cols - 1, 
                     sample_name, dark_header_format
@@ -194,7 +191,7 @@ if st.session_state.results_list:
                 for sub_col_idx, col_name in enumerate(df_item.columns):
                     worksheet_raw.write(1, current_col_idx + sub_col_idx, col_name, dark_header_format)
                 
-                # Rows 3+: Data Writing
+                # Rows 3+: Data Matrix Writing
                 active_cell_format = soft_stripe_formats[file_idx % len(soft_stripe_formats)]
                 for r_idx in range(len(df_item)):
                     for c_idx in range(num_cols):
@@ -206,7 +203,7 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- Chart Native Overlay Integration with Rigid Right-Axis Tracking ---
+            # --- Chart Native Overlay Integration (Fixed Dual-Axis Structure) ---
             chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
@@ -214,10 +211,7 @@ if st.session_state.results_list:
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
                 
-                # Fixed Core Column Matching Logic for Excel Data Mapping
-                # Row index shifts to 2 (starts from data cell row 3), dynamic length maps up to df_len + 1
-                
-                # MWD Profile Sequence: Column 0 (LogM) vs Column 1 (MMD)
+                # MWD Profile Series: Column 0 (LogM) vs Column 1 (MMD)
                 chart_mwd.add_series({
                     'name':       f"{item['file_name']} (MWD)",
                     'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
@@ -225,7 +219,7 @@ if st.session_state.results_list:
                     'line':       {'width': 2.2},
                 })
                 
-                # SCB Profile Sequence: Column 4 (LogM.2) vs Column 5 (SCB / 1000TC)
+                # SCB Profile Series: Column 4 (LogM.2) vs Column 5 (SCB / 1000TC)
                 chart_scb.add_series({
                     'name':       f"{item['file_name']} (SCB)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
@@ -235,10 +229,8 @@ if st.session_state.results_list:
                 })
                 col_offset += len(item["df"].columns)
             
-            # Combine Series into the Master Container Chart Template
-            chart_mwd.combine(chart_scb)
+            # Master configuration for Native Excel Dual Y-Axis Chart Rendering
             chart_mwd.set_title({'name': 'GPC MWD & SCB Overlay Profile'})
-            
             chart_mwd.set_x_axis({
                 'name': 'Log M',
                 'min': st.session_state.global_min_logm,
@@ -249,15 +241,16 @@ if st.session_state.results_list:
             
             scb_upper_limit = 5.0 if st.session_state.max_scb_value == 0.0 else st.session_state.max_scb_value * 5.0
             
-            # Fix Excel Secondary Axis visibility bug
+            # Critical step: Bind the secondary axis to chart_scb before combining
             chart_scb.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
                 'max': scb_upper_limit,
                 'visible': True
             })
-            chart_mwd.set_y2_axis({'visible': True})
             
+            # Combine chart sheets and inject to the report front page
+            chart_mwd.combine(chart_scb)
             chart_mwd.set_size({'width': 850, 'height': 500})
             worksheet_summary.insert_chart('B18', chart_mwd)
         
@@ -269,7 +262,7 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- Table Layout ---
+    # --- Compressed Table View Frame ---
     dynamic_ratio = min(max(len(st.session_state.results_list) * 1, 2), 4)
     col_table, col_spacer = st.columns([dynamic_ratio, 5 - dynamic_ratio])
     with col_table:
@@ -303,19 +296,18 @@ if st.session_state.data_mmd_list:
         col_mmd_idx = next((idx for idx, c in enumerate(cols_lower) if 'mmd' in c), None)
         col_scb_idx = next((idx for idx, c in enumerate(cols_lower) if 'scb' in c or '1000tc' in c), None)
         
-        # Web View Mapping Logic
+        # Plot MWD using Column 0 as X (LogM)
         if col_mmd_idx is not None and col_mmd_idx > 0:
-            col_mwd_logm_idx = col_mmd_idx - 1
             fig.add_trace(go.Scatter(
-                x=df.iloc[:, col_mwd_logm_idx], y=df.iloc[:, col_mmd_idx],
+                x=df.iloc[:, col_mmd_idx - 1], y=df.iloc[:, col_mmd_idx],
                 mode='lines', name=f"{f_name} (MWD)",
                 line=dict(color=color, width=2.5), yaxis='y1'
             ))
             
+        # Plot SCB using Column 4 as X (LogM.2)
         if col_scb_idx is not None and col_scb_idx > 0:
-            col_scb_logm_idx = col_scb_idx - 1
             fig.add_trace(go.Scatter(
-                x=df.iloc[:, col_scb_logm_idx], y=df.iloc[:, col_scb_idx],
+                x=df.iloc[:, col_scb_idx - 1], y=df.iloc[:, col_scb_idx],
                 mode='lines', name=f"{f_name} (SCB)",
                 line=dict(color=color, width=2, dash='dashdot'), yaxis='y2'
             ))

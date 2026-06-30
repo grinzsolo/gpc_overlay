@@ -191,8 +191,7 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- Chart Native Overlay Integration (Strict Setup for Scatter Dual-Axis) ---
-            # Both charts MUST be identical in type and subtype to unblock secondary axis mapping in Excel
+            # --- Chart Native Overlay Integration ---
             chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
@@ -210,15 +209,15 @@ if st.session_state.results_list:
                 
                 # SCB Profile Series: Column 4 (LogM.2) vs Column 5 (SCB / 1000TC)
                 chart_scb.add_series({
-                    'name':       f"{item['file_name']} (SCB)",
+                    'name':       f"{item['file_name']} (SCB / 1000TC)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
-                    'y2_axis':    True, # Enforce binding property to the secondary Y container
+                    'y2_axis':    True, 
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
             
-            # Master Layout formatting for the chart objects
+            # Master configuration for Native Excel Dual Y-Axis Chart Rendering
             chart_mwd.set_title({'name': 'GPC MWD & SCB Overlay Profile'})
             chart_mwd.set_x_axis({
                 'name': 'Log M',
@@ -226,17 +225,21 @@ if st.session_state.results_list:
                 'max': st.session_state.global_max_logm,
                 'major_unit': 1
             })
-            chart_mwd.set_y_axis({'name': 'MMD (Molecular Weight Distribution)'})
             
-            # Crucial Fix: Define the axis visibility and scale on the secondary container object FIRST
+            # Force primary Excel axis to start strictly at 0
+            chart_mwd.set_y_axis({
+                'name': 'MMD (Molecular Weight Distribution)',
+                'min': 0
+            })
+            
+            # Force secondary Excel axis to start strictly at 0 and top at 40
             chart_scb.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
-                'max': 40, # Strictly locked to 40 max boundary
+                'max': 40,
                 'visible': True
             })
             
-            # Combine chart sheets and pass the layout to front page summary report
             chart_mwd.combine(chart_scb)
             chart_mwd.set_size({'width': 850, 'height': 500})
             worksheet_summary.insert_chart('B18', chart_mwd)
@@ -274,16 +277,14 @@ if st.session_state.data_mmd_list:
     fig = go.Figure()
     colors = px.colors.qualitative.Plotly
     
+    # First Loop: Add MWD profile traces for ALL samples first to group them at the top of the legend
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]
         color = colors[i % len(colors)]
         cols_lower = [c.lower() for c in df.columns]
-        
         col_mmd_idx = next((idx for idx, c in enumerate(cols_lower) if 'mmd' in c), None)
-        col_scb_idx = next((idx for idx, c in enumerate(cols_lower) if 'scb' in c or '1000tc' in c), None)
         
-        # Plot MWD using Column 0 as X (LogM)
         if col_mmd_idx is not None and col_mmd_idx > 0:
             fig.add_trace(go.Scatter(
                 x=df.iloc[:, col_mmd_idx - 1], y=df.iloc[:, col_mmd_idx],
@@ -291,11 +292,18 @@ if st.session_state.data_mmd_list:
                 line=dict(color=color, width=2.5), yaxis='y1'
             ))
             
-        # Plot SCB using Column 4 as X (LogM.2)
+    # Second Loop: Add SCB / 1000TC profile traces next to push them below MWD in the legend
+    for i, data_item in enumerate(st.session_state.data_mmd_list):
+        f_name = data_item["file_name"]
+        df = data_item["df"]
+        color = colors[i % len(colors)]
+        cols_lower = [c.lower() for c in df.columns]
+        col_scb_idx = next((idx for idx, c in enumerate(cols_lower) if 'scb' in c or '1000tc' in c), None)
+        
         if col_scb_idx is not None and col_scb_idx > 0:
             fig.add_trace(go.Scatter(
                 x=df.iloc[:, col_scb_idx - 1], y=df.iloc[:, col_scb_idx],
-                mode='lines', name=f"{f_name} (SCB)",
+                mode='lines', name=f"{f_name} (SCB / 1000TC)",  # Renamed strictly according to requirement
                 line=dict(color=color, width=2, dash='dashdot'), yaxis='y2'
             ))
     
@@ -306,8 +314,22 @@ if st.session_state.data_mmd_list:
             range=[st.session_state.global_min_logm, st.session_state.global_max_logm],
             dtick=1
         ),
-        yaxis=dict(title="MMD (Molecular Weight Distribution)", showgrid=True, gridcolor='#e2e8f0', side="left"),
-        yaxis2=dict(title="SCB / 1000TC", showgrid=False, anchor="x", overlaying="y", side="right", range=[0, 40]), 
+        # Fix alignment by setting rangemode to non-negative zero boundaries
+        yaxis=dict(
+            title="MMD (Molecular Weight Distribution)", 
+            showgrid=True, 
+            gridcolor='#e2e8f0', 
+            side="left",
+            range=[0, None]  # Force explicit start at 0
+        ),
+        yaxis2=dict(
+            title="SCB / 1000TC", 
+            showgrid=False, 
+            anchor="x", 
+            overlaying="y", 
+            side="right", 
+            range=[0, 40]  # Force explicit start at 0 and end at 40
+        ),
         hovermode="x unified",
         legend=dict(
             orientation="v",       

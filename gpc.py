@@ -71,7 +71,6 @@ if submit_button and uploaded_files:
                     "df": df_mmd
                 })
                 
-                # Global X axis range tracking based on the primary LogM column (Column 0)
                 if len(df_mmd.columns) > 0:
                     numeric_logm = pd.to_numeric(df_mmd.iloc[:, 0], errors='coerce').dropna()
                     if not numeric_logm.empty:
@@ -146,7 +145,6 @@ if st.session_state.results_list:
             worksheet_summary = writer.sheets['Summary_Report']
             worksheet_raw = workbook.add_worksheet('Raw_Data_MMD')
             
-            # --- Dark Color Theme Styles Configuration ---
             dark_header_format = workbook.add_format({
                 'bg_color': '#1E3A8A', 
                 'font_color': '#FFFFFF',
@@ -165,7 +163,6 @@ if st.session_state.results_list:
                 workbook.add_format({'bg_color': '#FFFBEB', 'border': 1, 'border_color': '#E2E8F0'})
             ]
             
-            # --- Populate Raw MMD Sheet with Multi-Level Dark Headers ---
             current_col_idx = 0
             for file_idx, item in enumerate(st.session_state.data_mmd_list):
                 df_item = item["df"]
@@ -191,7 +188,8 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- Chart Native Overlay Integration ---
+            # --- 3. Critical Fix: Excel Scatter Chart Dual Y-Axis Re-mapping ---
+            # Define SCB chart container first as the target secondary platform
             chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
@@ -199,7 +197,7 @@ if st.session_state.results_list:
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
                 
-                # MWD Profile Series: Column 0 (LogM) vs Column 1 (MMD)
+                # Primary MWD Data Series
                 chart_mwd.add_series({
                     'name':       f"{item['file_name']} (MWD)",
                     'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
@@ -207,7 +205,7 @@ if st.session_state.results_list:
                     'line':       {'width': 2.2},
                 })
                 
-                # SCB Profile Series: Column 4 (LogM.2) vs Column 5 (SCB / 1000TC)
+                # Secondary SCB Data Series
                 chart_scb.add_series({
                     'name':       f"{item['file_name']} (SCB / 1000TC)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
@@ -217,8 +215,9 @@ if st.session_state.results_list:
                 })
                 col_offset += len(item["df"].columns)
             
-            # Master configuration for Native Excel Dual Y-Axis Chart Rendering
-            chart_mwd.set_title({'name': 'GPC MWD & SCB Overlay Profile'})
+            # Formulate Title Text Layout
+            chart_mwd.set_title({'name': 'GPC MWD & SCB/1000TC Overlay Profile'})
+            
             chart_mwd.set_x_axis({
                 'name': 'Log M',
                 'min': st.session_state.global_min_logm,
@@ -226,13 +225,12 @@ if st.session_state.results_list:
                 'major_unit': 1
             })
             
-            # Force primary Excel axis to start strictly at 0
             chart_mwd.set_y_axis({
                 'name': 'MMD (Molecular Weight Distribution)',
                 'min': 0
             })
             
-            # Force secondary Excel axis to start strictly at 0 and top at 40
+            # Fix: Inject visible property directly to the secondary axis configuration parameters
             chart_scb.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
@@ -240,6 +238,7 @@ if st.session_state.results_list:
                 'visible': True
             })
             
+            # Combine the two chart sheets together (mwd hosts the main combined output)
             chart_mwd.combine(chart_scb)
             chart_mwd.set_size({'width': 850, 'height': 500})
             worksheet_summary.insert_chart('B18', chart_mwd)
@@ -272,12 +271,13 @@ if st.session_state.results_list:
 
 # --- Section 2: Dual Y-Axis Clean Overlay Plot ---
 if st.session_state.data_mmd_list:
-    st.subheader("📈 MWD & SCB Overlay Profile")
+    # 1) Changed Heading Title Name perfectly according to requirement
+    st.subheader("📈 MWD & SCB/1000TC Overlay Profile")
     
     fig = go.Figure()
     colors = px.colors.qualitative.Plotly
     
-    # First Loop: Add MWD profile traces for ALL samples first to group them at the top of the legend
+    # Loop 1: Map MWD profile traces onto top positions of the vertical legend list
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]
@@ -292,7 +292,7 @@ if st.session_state.data_mmd_list:
                 line=dict(color=color, width=2.5), yaxis='y1'
             ))
             
-    # Second Loop: Add SCB / 1000TC profile traces next to push them below MWD in the legend
+    # Loop 2: Map SCB/1000TC profile traces onto bottom positions of the vertical legend list
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]
@@ -311,25 +311,26 @@ if st.session_state.data_mmd_list:
         xaxis=dict(
             title="Log M", showgrid=True, gridcolor='#e2e8f0',
             zeroline=True, zerolinecolor='#cbd5e1',
+            # 2) Enforce full bounding outer frame line borders around the graph rectangle
+            showline=True, linewidth=1, linecolor='#cbd5e1', mirror=True,
             range=[st.session_state.global_min_logm, st.session_state.global_max_logm],
             dtick=1
         ),
-        # Fix baseline zero alignment perfectly
+        # 1) Lock baseline zero alignment perfectly across both left and right Y planes
         yaxis=dict(
             title="MMD (Molecular Weight Distribution)", 
-            showgrid=True, 
-            gridcolor='#e2e8f0', 
-            side="left",
-            rangemode="tozero"  # Forces primary axis to strictly anchor 0 line
+            showgrid=True, gridcolor='#e2e8f0', side="left",
+            # 2) Enforce full bounding outer frame line borders around the graph rectangle
+            showline=True, linewidth=1, linecolor='#cbd5e1', mirror=True,
+            rangemode="tozero"  # Locks baseline to zero explicitly
         ),
         yaxis2=dict(
             title="SCB / 1000TC", 
-            showgrid=False, 
-            anchor="x", 
-            overlaying="y", 
-            side="right", 
-            range=[0, 40],
-            rangemode="tozero"  # Forces secondary axis to strictly anchor 0 line at the exact horizontal plane
+            showgrid=False, anchor="x", overlaying="y", side="right", 
+            # 2) Enforce full bounding outer frame line borders around the graph rectangle
+            showline=True, linewidth=1, linecolor='#cbd5e1', mirror=True,
+            range=[0, 40], # Fixed range starting strictly at 0 matching Y1 grid alignment
+            rangemode="tozero"  # Hard locks baseline to zero explicitly at horizontal plane
         ),
         hovermode="x unified",
         legend=dict(

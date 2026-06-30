@@ -60,6 +60,18 @@ st.markdown("""
         
         /* Dataframe border smoothness */
         .stDataFrame { border: 1px solid #e2e8f0; border-radius: 8px; background-color: white; }
+
+        /* --- FIX: Wrap sample name headers / cells so they are not cut off, no scrollbar needed --- */
+        div[data-testid="stDataFrame"] div[role="columnheader"] {
+            white-space: normal !important;
+            line-height: 1.2rem;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            align-items: center !important;
+        }
+        div[data-testid="stDataFrame"] div[role="gridcell"] {
+            white-space: normal !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -332,7 +344,7 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- 🛠️ [FIXED] ตั้งค่าตาราง Web App ให้กะทัดรัด พอดีกับข้อมูล ---
+    # --- 🛠️ ตั้งค่าตาราง Web App: wrap ชื่อ sample ให้ enter ลงบรรทัดใหม่ได้ + โชว์เต็มไม่มี scroll bar ---
     streamlit_col_config = {
         "GPC-IR": st.column_config.Column("GPC-IR", width=160, required=True),
         "unit": st.column_config.Column("unit", width=80)
@@ -340,15 +352,20 @@ if st.session_state.results_list:
     
     for sample_col in df_summary_transposed.columns:
         if sample_col != "unit":
-            # จำกัดความกว้างไว้ที่ประมาณ 140px เพื่อให้หุ้มข้อความพอดีๆ ไม่ยืดจนโล่ง
             streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=140) 
+
+    # คำนวณความสูงให้พอดีกับจำนวนแถว เพื่อไม่ให้เกิด vertical scroll bar
+    row_height = 35
+    header_height = 60  # เผื่อพื้นที่ให้ชื่อ sample ที่ยาวขึ้นบรรทัดใหม่ได้
+    table_height = header_height + (len(df_summary_transposed) + 1) * row_height
 
     st.dataframe(
         df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
         ),
-        use_container_width=False, # เปลี่ยนเป็น False เพื่อปิดการบังคับขยาย 100% (ตารางจะได้หดตัวลงมาพอดีข้อมูล)
+        use_container_width=True,   # ขยายเต็มความกว้าง container แทนการตัดด้วย horizontal scroll
+        height=table_height,        # ตั้งความสูงพอดีจำนวนแถว ป้องกัน vertical scroll bar
         column_config=streamlit_col_config
     )
     st.markdown("---")

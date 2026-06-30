@@ -188,8 +188,21 @@ if st.session_state.results_list:
                             
                 current_col_idx += num_cols
 
-            # --- 3. Critical Fix: Excel Scatter Chart Dual Y-Axis Re-mapping ---
-            # Define SCB chart container first as the target secondary platform
+            # --- Fix รูปที่ 2: Auto-fit Column Width สำหรับแผ่นงาน Excel ---
+            # ปรับความกว้างคอลลัมน์แผ่น Summary_Report
+            for col_idx in range(len(df_summary_transposed.columns) + 1):
+                worksheet_summary.set_column(col_idx, col_idx, 22)
+                
+            # ปรับความกว้างคอลลัมน์แผ่น Raw_Data_MMD ตามเนื้อหาจริง
+            current_col_idx = 0
+            for item in st.session_state.data_mmd_list:
+                df_item = item["df"]
+                for sub_col_idx, col_name in enumerate(df_item.columns):
+                    max_len = max(df_item.iloc[:, sub_col_idx].astype(str).str.len().max(), len(str(col_name))) + 3
+                    worksheet_raw.set_column(current_col_idx + sub_col_idx, current_col_idx + sub_col_idx, max(max_len, 12))
+                current_col_idx += len(df_item.columns)
+
+            # --- Fix รูปที่ 3: โครงสร้างการผูกแผนภูมิ Dual Y-Axis ใน Excel ---
             chart_mwd = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             chart_scb = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
             
@@ -197,7 +210,7 @@ if st.session_state.results_list:
             for idx, item in enumerate(st.session_state.data_mmd_list):
                 df_len = len(item["df"])
                 
-                # Primary MWD Data Series
+                # Primary MWD Data Series (แกนหลักซ้าย)
                 chart_mwd.add_series({
                     'name':       f"{item['file_name']} (MWD)",
                     'categories': ['Raw_Data_MMD', 2, col_offset, df_len + 1, col_offset],
@@ -205,17 +218,17 @@ if st.session_state.results_list:
                     'line':       {'width': 2.2},
                 })
                 
-                # Secondary SCB Data Series
+                # Secondary SCB Data Series (แกนรองขวา)
                 chart_scb.add_series({
                     'name':       f"{item['file_name']} (SCB / 1000TC)",
                     'categories': ['Raw_Data_MMD', 2, col_offset + 4, df_len + 1, col_offset + 4],
                     'values':     ['Raw_Data_MMD', 2, col_offset + 5, df_len + 1, col_offset + 5],
-                    'y2_axis':    True, 
+                    'y2_axis':    1,  # สั่งเปิดแกนที่สองโดยตรงที่ชุดข้อมูลของ XlsxWriter
                     'line':       {'width': 1.8, 'dash_type': 'dash_dot'},
                 })
                 col_offset += len(item["df"].columns)
             
-            # Formulate Title Text Layout
+            # ตั้งค่าแกนหลักและแกนรอง
             chart_mwd.set_title({'name': 'GPC MWD & SCB/1000TC Overlay Profile'})
             
             chart_mwd.set_x_axis({
@@ -230,15 +243,15 @@ if st.session_state.results_list:
                 'min': 0
             })
             
-            # Fix: Inject visible property directly to the secondary axis configuration parameters
-            chart_scb.set_y2_axis({
+            # บังคับการแสดงผลแกนขวาใน Excel Chart
+            chart_mwd.set_y2_axis({
                 'name': 'SCB / 1000TC',
                 'min': 0,
                 'max': 40,
                 'visible': True
             })
             
-            # Combine the two chart sheets together (mwd hosts the main combined output)
+            # ผสานแผนภูมิและนำไปวางในแผ่นสรุปผล
             chart_mwd.combine(chart_scb)
             chart_mwd.set_size({'width': 850, 'height': 500})
             worksheet_summary.insert_chart('B18', chart_mwd)
@@ -251,33 +264,27 @@ if st.session_state.results_list:
             use_container_width=True
         )
 
-    # --- Compressed Table Layout Frame ---
-    dynamic_ratio = min(max(len(st.session_state.results_list) * 1, 2), 4)
-    col_table, col_spacer = st.columns([dynamic_ratio, 5 - dynamic_ratio])
-    with col_table:
-        formatted_df = df_summary_transposed.style.format(
+    # --- Fix รูปที่ 1: ปรับความกว้างของ Table บน Streamlit ให้แสดงผลเลขเต็มช่อง ---
+    st.dataframe(
+        df_summary_transposed.style.format(
             formatter=lambda x: f"{int(x)}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
             na_rep="-"
-        )
-        st.dataframe(
-            formatted_df,
-            use_container_width=False, 
-            column_config={
-                "GPC-IR": st.column_config.Column("GPC-IR", width=190, required=True),
-                "unit": st.column_config.Column("unit", width=75)
-            }
-        )
+        ),
+        use_container_width=True, # บังคับให้ตารางขยายพื้นที่เต็มหน้าจอ ป้องกันตัวเลขโดนบีบ
+        column_config={
+            "GPC-IR": st.column_config.Column("GPC-IR", width=None, required=True),
+            "unit": st.column_config.Column("unit", width=None)
+        }
+    )
     st.markdown("---")
 
 # --- Section 2: Dual Y-Axis Clean Overlay Plot ---
 if st.session_state.data_mmd_list:
-    # 1) Changed Heading Title Name perfectly according to requirement
     st.subheader("📈 MWD & SCB/1000TC Overlay Profile")
     
     fig = go.Figure()
     colors = px.colors.qualitative.Plotly
     
-    # Loop 1: Map MWD profile traces onto top positions of the vertical legend list
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]
@@ -292,7 +299,6 @@ if st.session_state.data_mmd_list:
                 line=dict(color=color, width=2.5), yaxis='y1'
             ))
             
-    # Loop 2: Map SCB/1000TC profile traces onto bottom positions of the vertical legend list
     for i, data_item in enumerate(st.session_state.data_mmd_list):
         f_name = data_item["file_name"]
         df = data_item["df"]
@@ -311,26 +317,22 @@ if st.session_state.data_mmd_list:
         xaxis=dict(
             title="Log M", showgrid=True, gridcolor='#e2e8f0',
             zeroline=True, zerolinecolor='#cbd5e1',
-            # 2) Enforce full bounding outer frame line borders around the graph rectangle
             showline=True, linewidth=1, linecolor='#cbd5e1', mirror=True,
             range=[st.session_state.global_min_logm, st.session_state.global_max_logm],
             dtick=1
         ),
-        # 1) Lock baseline zero alignment perfectly across both left and right Y planes
         yaxis=dict(
             title="MMD (Molecular Weight Distribution)", 
             showgrid=True, gridcolor='#e2e8f0', side="left",
-            # 2) Enforce full bounding outer frame line borders around the graph rectangle
             showline=True, linewidth=1, linecolor='#cbd5e1', mirror=True,
-            rangemode="tozero"  # Locks baseline to zero explicitly
+            rangemode="tozero"
         ),
         yaxis2=dict(
             title="SCB / 1000TC", 
             showgrid=False, anchor="x", overlaying="y", side="right", 
-            # 2) Enforce full bounding outer frame line borders around the graph rectangle
             showline=True, linewidth=1, linecolor='#cbd5e1', mirror=True,
-            range=[0, 40], # Fixed range starting strictly at 0 matching Y1 grid alignment
-            rangemode="tozero"  # Hard locks baseline to zero explicitly at horizontal plane
+            range=[0, 40],
+            rangemode="tozero"
         ),
         hovermode="x unified",
         legend=dict(

@@ -10,19 +10,7 @@ st.set_page_config(page_title="GPC Multi-File Overlay Dashboard", layout="wide")
 
 # Modern and Professional UI Customization
 st.markdown("""
-    <style>
-        /* บังคับตัดคำในหัวตาราง */
-        [data-testid="stDataFrame"] thead tr th {
-            white-space: pre-wrap !important;
-            word-wrap: break-word !important;
-            line-height: 1.2 !important;
-            vertical-align: middle !important;
-        }
-        /* เพิ่มพื้นที่ให้หัวตารางสูงขึ้น เพื่อให้เห็นคำที่ขึ้นบรรทัดใหม่ */
-        [data-testid="stDataFrame"] thead tr {
-            height: auto !important;
-        }
-        
+    <style>        
         /* Base page background */
         .main { background-color: #f8fafc; }
         .block-container { padding-top: 2rem; padding-bottom: 2rem; }

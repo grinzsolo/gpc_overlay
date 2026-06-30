@@ -58,20 +58,8 @@ st.markdown("""
         .metric-value { font-size: 1.6rem; font-weight: 700; color: #1e3a8a; }
         .metric-label { font-size: 0.85rem; color: #64748b; font-weight: 500; }
         
-        /* Dataframe border smoothness */
+        /* Dataframe border smoothness (used by other st.dataframe instances, if any) */
         .stDataFrame { border: 1px solid #e2e8f0; border-radius: 8px; background-color: white; }
-
-        /* --- FIX: Wrap sample name headers / cells so they are not cut off, no scrollbar needed --- */
-        div[data-testid="stDataFrame"] div[role="columnheader"] {
-            white-space: normal !important;
-            line-height: 1.2rem;
-            overflow: visible !important;
-            text-overflow: clip !important;
-            align-items: center !important;
-        }
-        div[data-testid="stDataFrame"] div[role="gridcell"] {
-            white-space: normal !important;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -347,8 +335,15 @@ if st.session_state.results_list:
     # --- 🛠️ ตั้งค่าตาราง Web App: 
     #     - unit column แคบพอดีตัวอักษร
     #     - sample column กว้างพอดีกับตัวเลขที่ยาวที่สุดในคอลัมน์นั้น
-    #     - ชื่อ sample ที่ยาว wrap ลงบรรทัดใหม่ได้ (จัดการด้วย CSS ด้านบนแล้ว)
+    #     - ชื่อ sample ที่ยาว wrap ลงบรรทัดใหม่ได้จริง
     #     - ไม่มี row ว่าง (null) ปนอยู่
+    #
+    #     หมายเหตุ: st.dataframe เรนเดอร์ตารางด้วย canvas (glide-data-grid)
+    #     ดังนั้น CSS ที่เขียนไว้ก่อนหน้านี้จะไม่มีผลกับ header/cell จริง ๆ
+    #     (ข้อความเลยถูกตัด/จมแทนที่จะ wrap) จึงเปลี่ยนมาใช้ HTML table ปกติ
+    #     เพื่อให้ควบคุมความกว้างคอลัมน์และการขึ้นบรรทัดใหม่ได้แม่นยำ 100%
+
+    import html as _html
 
     def format_cell_for_width(val, index_val):
         """ช่วยประเมินความยาวของค่าตามรูปแบบที่จะแสดงผลจริง เพื่อคำนวณความกว้างคอลัมน์"""
@@ -360,58 +355,119 @@ if st.session_state.results_list:
             return f"{val:.2f}"
         return str(val)
 
-    # คำนวณความกว้าง unit column ให้พอดีกับข้อความ unit ที่ยาวที่สุด
-    unit_values = df_summary_transposed["unit"].fillna("").astype(str)
-    max_unit_len = max([len(v) for v in unit_values] + [len("unit")])
-    unit_col_width = max(60, min(100, max_unit_len * 9 + 30))
-
-    # คำนวณความกว้าง GPC-IR (index) column ให้พอดีกับชื่อ metric ที่ยาวที่สุด
-    max_index_len = max([len(str(v)) for v in df_summary_transposed.index] + [len("GPC-IR")])
-    index_col_width = max(120, min(220, max_index_len * 9 + 30))
-
-    streamlit_col_config = {
-        "GPC-IR": st.column_config.Column("GPC-IR", width=index_col_width, required=True),
-        "unit": st.column_config.Column("unit", width=unit_col_width)
-    }
-
-    for sample_col in df_summary_transposed.columns:
-        if sample_col != "unit":
-            # ความกว้างตามตัวเลข/ค่าที่ยาวที่สุดในคอลัมน์นี้
-            formatted_vals = [
-                format_cell_for_width(val, idx)
-                for idx, val in zip(df_summary_transposed.index, df_summary_transposed[sample_col])
-            ]
-            max_val_len = max([len(v) for v in formatted_vals] + [1])
-            data_width = max_val_len * 9 + 30
-
-            # ความกว้างตามชื่อ sample (คำนวณจากคำที่ยาวที่สุดในชื่อ เพราะหัวคอลัมน์ wrap ได้)
-            header_words = str(sample_col).replace("_", " ").split(" ")
-            max_word_len = max([len(w) for w in header_words] + [1])
-            header_width = max_word_len * 8 + 30
-
-            sample_col_width = int(max(data_width, header_width, 90))
-            sample_col_width = min(sample_col_width, 220)  # กันไม่ให้กว้างเกินไปถ้าชื่อยาวมาก (จะ wrap แทน)
-
-            streamlit_col_config[sample_col] = st.column_config.Column(sample_col, width=sample_col_width)
-
     # ตัดแถวที่เป็น null ทั้งแถวออก (ไม่นับคอลัมน์ unit) ก่อนแสดงผล
     data_only_cols = [c for c in df_summary_transposed.columns if c != "unit"]
     df_display = df_summary_transposed[df_summary_transposed[data_only_cols].notna().any(axis=1)]
 
-    # คำนวณความสูงให้พอดีกับจำนวนแถวจริง (ไม่เผื่อแถวเกิน) เพื่อไม่ให้เกิด vertical scroll bar หรือแถวว่างท้ายตาราง
-    row_height = 35
-    header_height = 38
-    table_height = header_height + len(df_display) * row_height + 3  # +3 กันขอบล่างถูกตัด
+    # คำนวณความกว้าง unit column ให้พอดีกับข้อความ unit ที่ยาวที่สุด
+    unit_values = df_display["unit"].fillna("").astype(str)
+    max_unit_len = max([len(v) for v in unit_values] + [len("unit")])
+    unit_col_width = max(55, min(90, max_unit_len * 8 + 24))
 
-    st.dataframe(
-        df_display.style.format(
-            formatter=lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x.is_integer() else (f"{x:.2f}" if isinstance(x, (int, float)) else f"{x}"),
-            na_rep="-"
-        ),
-        use_container_width=False,  # ปิดการ stretch คอลัมน์ให้เต็ม container เพราะจะ override ความกว้างที่คำนวณไว้ ทำให้คอลัมน์กว้างเกินจำเป็น
-        height=table_height,        # ตั้งความสูงพอดีจำนวนแถวจริง ป้องกัน vertical scroll bar / แถวว่าง
-        column_config=streamlit_col_config
-    )
+    # คำนวณความกว้าง GPC-IR (index) column ให้พอดีกับชื่อ metric ที่ยาวที่สุด
+    max_index_len = max([len(str(v)) for v in df_display.index] + [len("GPC-IR")])
+    index_col_width = max(120, min(220, max_index_len * 8 + 28))
+
+    # คำนวณความกว้างแต่ละ sample column ให้พอดีตัวเลขที่ยาวที่สุด แต่ยอมให้ชื่อ sample wrap ได้
+    sample_col_widths = {}
+    for sample_col in data_only_cols:
+        formatted_vals = [
+            format_cell_for_width(val, idx)
+            for idx, val in zip(df_display.index, df_display[sample_col])
+        ]
+        max_val_len = max([len(v) for v in formatted_vals] + [1])
+        data_width = max_val_len * 9 + 28
+
+        # ความกว้างตามคำที่ยาวที่สุดในชื่อ sample (ส่วนที่เหลือจะ wrap ลงบรรทัดใหม่)
+        header_words = str(sample_col).replace("_", " ").replace("-", " ").split(" ")
+        max_word_len = max([len(w) for w in header_words] + [1])
+        header_width = max_word_len * 7.5 + 28
+
+        sample_col_widths[sample_col] = int(max(data_width, header_width, 100))
+
+    # --- สร้างตารางด้วย HTML จริง (ไม่ใช้ canvas) เพื่อให้ wrap ข้อความและกำหนดความกว้างได้แม่นยำ ---
+    colgroup_html = f'<col style="width:{index_col_width}px;"><col style="width:{unit_col_width}px;">'
+    header_cells_html = '<th class="gpc-th gpc-th-index">GPC-IR</th><th class="gpc-th gpc-th-unit">unit</th>'
+    for sample_col in data_only_cols:
+        w = sample_col_widths[sample_col]
+        colgroup_html += f'<col style="width:{w}px;">'
+        header_cells_html += f'<th class="gpc-th gpc-th-sample">{_html.escape(str(sample_col))}</th>'
+
+    body_rows_html = ""
+    for row_i, (index_val, row_data) in enumerate(df_display.iterrows()):
+        row_class = "gpc-row-even" if row_i % 2 == 0 else "gpc-row-odd"
+        unit_val = row_data["unit"]
+        unit_display = _html.escape(str(unit_val)) if pd.notna(unit_val) and str(unit_val) != "" else ""
+        cells = f'<td class="gpc-td gpc-td-index">{_html.escape(str(index_val))}</td>'
+        cells += f'<td class="gpc-td gpc-td-unit">{unit_display}</td>'
+        for sample_col in data_only_cols:
+            val = row_data[sample_col]
+            val_display = format_cell_for_width(val, index_val) if pd.notna(val) else "-"
+            cells += f'<td class="gpc-td gpc-td-data">{_html.escape(val_display)}</td>'
+        body_rows_html += f'<tr class="{row_class}">{cells}</tr>'
+
+    gpc_table_html = f"""
+    <style>
+        .gpc-table-wrapper {{
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: white;
+        }}
+        table.gpc-table {{
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-family: "Source Sans Pro", sans-serif;
+            font-size: 0.85rem;
+        }}
+        table.gpc-table th.gpc-th {{
+            background-color: #1E3A8A;
+            color: #ffffff;
+            font-weight: 700;
+            text-align: left;
+            padding: 8px 10px;
+            border: 1px solid #94A3B8;
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.25;
+            vertical-align: middle;
+        }}
+        table.gpc-table th.gpc-th-sample {{
+            text-align: center;
+        }}
+        table.gpc-table td.gpc-td {{
+            padding: 7px 10px;
+            border: 1px solid #e2e8f0;
+            white-space: normal;
+            word-wrap: break-word;
+        }}
+        table.gpc-table td.gpc-td-index {{
+            color: #334155;
+            font-weight: 600;
+            text-align: left;
+        }}
+        table.gpc-table td.gpc-td-unit {{
+            color: #64748b;
+            text-align: left;
+        }}
+        table.gpc-table td.gpc-td-data {{
+            text-align: right;
+            color: #0f172a;
+            font-variant-numeric: tabular-nums;
+        }}
+        table.gpc-table tr.gpc-row-even {{ background-color: #ffffff; }}
+        table.gpc-table tr.gpc-row-odd {{ background-color: #f8fafc; }}
+    </style>
+    <div class="gpc-table-wrapper">
+        <table class="gpc-table">
+            <colgroup>{colgroup_html}</colgroup>
+            <thead><tr>{header_cells_html}</tr></thead>
+            <tbody>{body_rows_html}</tbody>
+        </table>
+    </div>
+    """
+
+    st.markdown(gpc_table_html, unsafe_allow_html=True)
     st.markdown("---")
 
 # --- Section 2: Dual Y-Axis Clean Overlay Plot ---
